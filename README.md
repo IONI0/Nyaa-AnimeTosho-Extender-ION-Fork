@@ -14,6 +14,10 @@ Userscript that extends Nyaa view page with AnimeTosho information. Original scr
 - (New) Attachment download options for all tracks and language filters
 - (New) Collapsible headings for everything
 
+### Installation
+1. Install a user script manager like [Violentmonkey](https://violentmonkey.github.io/).
+2. Then, [click here to install script](https://github.com/IONI0/Nyaa-AnimeTosho-Extender-ION-Fork/raw/refs/heads/main/Nyaa-AnimeTosho-Extender-ION-Fork.user.js)
+
 ---
 
 ### View page
