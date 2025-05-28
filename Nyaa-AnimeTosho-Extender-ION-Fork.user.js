@@ -5,8 +5,8 @@
 // @author       ION
 // @original-author Jimbo
 // @original-source https://gitea.com/Jimbo/PT-Userscripts/src/branch/main/nyaa-animetosho.user.js
-// @downloadURL  https://github.com/IONI0/Nyaa-AnimeTosho-Extender-ION-Fork/blob/main/Nyaa-AnimeTosho-Extender-ION-Fork.user.js
-// @updateURL    https://github.com/IONI0/Nyaa-AnimeTosho-Extender-ION-Fork/blob/main/Nyaa-AnimeTosho-Extender-ION-Fork.user.js
+// @downloadURL  https://github.com/IONI0/Nyaa-AnimeTosho-Extender-ION-Fork/raw/refs/heads/main/Nyaa-AnimeTosho-Extender-ION-Fork.user.js
+// @updateURL    https://github.com/IONI0/Nyaa-AnimeTosho-Extender-ION-Fork/raw/refs/heads/main/Nyaa-AnimeTosho-Extender-ION-Fork.user.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_openInTab
 // @grant        GM.getValue
