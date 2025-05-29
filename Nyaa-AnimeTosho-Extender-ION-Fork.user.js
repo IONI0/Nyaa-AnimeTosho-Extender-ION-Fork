@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-11
+// @version      0.61-12
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -171,8 +171,8 @@ async function fetchScreenshots(url) {
             let linkMatch;
             while ((linkMatch = linkRegex.exec(match[1])) !== null) {
                 // Convert the URL to the storage URL format and preserve track flags
-                const storageUrl = linkMatch[1].replace(/\/view\/sframes\//, '/storage/sframes/');
-                const thumbnailUrl = linkMatch[3].replace(/\/view\/sframes\//, '/storage/sframes/');
+                const storageUrl = linkMatch[1].replace(/.*\/sframes\//, 'https://storage.animetosho.org/sframes/');
+                const thumbnailUrl = linkMatch[3].replace(/.*\/sframes\//, 'https://storage.animetosho.org/sframes/');
 
                 // Extract track flag from the original URL
                 const trackMatch = linkMatch[1].match(/s=(\d+)/);
@@ -568,8 +568,8 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
                 const nextUrl = trackNum ? `${screenshots[nextIndex].url.split('?')[0]}?s=${trackNum}` : screenshots[nextIndex].url.split('?')[0];
 
                 // Preload silently
-                preloadImage(prevUrl).catch(() => {});
-                preloadImage(nextUrl).catch(() => {});
+                preloadImage(prevUrl).catch(() => { });
+                preloadImage(nextUrl).catch(() => { });
             }
         };
 
@@ -641,9 +641,9 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
     modalOverlay.addEventListener('click', (e) => {
         // Check if the click was on a button, dot indicators, or other interactive element
         const isInteractive = e.target.closest('button') ||
-                            e.target === modalImage ||
-                            e.target.closest('#screenshot-modal > div:last-child') ||
-                            e.target.closest('select');
+            e.target === modalImage ||
+            e.target.closest('#screenshot-modal > div:last-child') ||
+            e.target.closest('select');
 
         // Close if not clicking on an interactive element
         if (!isInteractive) {
@@ -655,8 +655,8 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
     modalContent.addEventListener('click', (e) => {
         // Only prevent closing for these specific elements
         const shouldPreventClose = e.target === modalImage ||
-                                 e.target.closest('button') ||
-                                 e.target.closest('select');
+            e.target.closest('button') ||
+            e.target.closest('select');
 
         if (shouldPreventClose) {
             e.stopPropagation();
@@ -690,7 +690,7 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
     // Keyboard navigation with wrap-around
     function handleKeydown(e) {
         if (document.getElementById('screenshot-modal')) {
-            switch(e.key) {
+            switch (e.key) {
                 case 'Escape':
                     modalOverlay.remove();
                     break;
@@ -709,7 +709,7 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
 
     // Remove keydown listener and restore scroll when modal is closed
     const originalRemove = modalOverlay.remove;
-    modalOverlay.remove = function() {
+    modalOverlay.remove = function () {
         document.removeEventListener('keydown', handleKeydown);
         // Restore scroll position
         document.body.style.position = '';
@@ -796,7 +796,7 @@ function addScreenshotsToPage(screenshots, subtitles, episodeTitle) {
     gridContainer.style.display = "grid";
     // Set grid template columns based on screenshotRows setting
     let columnsPerRow;
-    switch(settings.previewSize) {
+    switch (settings.previewSize) {
         case "compact": columnsPerRow = "5"; break;
         case "medium": columnsPerRow = "3"; break;
         case "large": columnsPerRow = "2"; break;
@@ -812,22 +812,20 @@ function addScreenshotsToPage(screenshots, subtitles, episodeTitle) {
     style.textContent = `
         @media (max-width: 1200px) {
             .screenshot-grid {
-                grid-template-columns: repeat(${
-                    settings.previewSize === "compact" ? "5" :
-                    settings.previewSize === "medium" ? "3" :
-                    settings.previewSize === "large" ? "2" :
+                grid-template-columns: repeat(${settings.previewSize === "compact" ? "5" :
+            settings.previewSize === "medium" ? "3" :
+                settings.previewSize === "large" ? "2" :
                     "1"
-                }, 1fr) !important;
+        }, 1fr) !important;
             }
         }
         @media (max-width: 600px) {
             .screenshot-grid {
-                grid-template-columns: repeat(${
-                    settings.previewSize === "compact" ? "3" :
-                    settings.previewSize === "medium" ? "2" :
-                    settings.previewSize === "large" ? "1" :
+                grid-template-columns: repeat(${settings.previewSize === "compact" ? "3" :
+            settings.previewSize === "medium" ? "2" :
+                settings.previewSize === "large" ? "1" :
                     "1"
-                }, 1fr) !important;
+        }, 1fr) !important;
             }
         }
     `;
@@ -1306,8 +1304,8 @@ async function doFeatures() {
                 subtitles[0].text = "All Attachments (Batch)";
             }
             batchFirstEp = `https://animetosho.org/file/${firstEpId}`;
-                const firstEpSubtitles = await fetchSubtitlesSection(batchFirstEp);
-                subtitles = [...subtitles, ...firstEpSubtitles.slice(1)];
+            const firstEpSubtitles = await fetchSubtitlesSection(batchFirstEp);
+            subtitles = [...subtitles, ...firstEpSubtitles.slice(1)];
 
         }
 
@@ -1330,8 +1328,8 @@ async function doFeatures() {
     // Fileinfo
     if (firstEpId && settings.fileinfo) {
         const fileInfo = await fetchUrl(`https://feed.animetosho.org/json?show=file&id=${firstEpId}`);
-            // console.log(fileInfo)
-            try {
+        // console.log(fileInfo)
+        try {
             if (!fileInfo.info.mediainfo);
             let text = document.createTextNode(" or ");
             parent?.appendChild(text);
@@ -1522,7 +1520,7 @@ async function doSettings() {
             <div class="settings-header">Nyaa-AnimeTosho Extender <i class="fa fa-cog" aria-hidden="true"></i></div>
             <div style="margin-bottom: 10px;">
                 ${Object.keys(settings)
-                .filter(key => !['nzb','sabUrl','nzbKey','screenshots','previewSize','subsByDefault','attachments','filtersByDefault','languageFilters'].includes(key))
+                .filter(key => !['nzb', 'sabUrl', 'nzbKey', 'screenshots', 'previewSize', 'subsByDefault', 'attachments', 'filtersByDefault', 'languageFilters'].includes(key))
                 .map(key => {
                     let inputHtml = '';
                     if (typeof settings[key] === "boolean") {
@@ -1602,17 +1600,17 @@ async function doSettings() {
         `;
 
         // Add dynamic show/hide logic for dependent settings
-        settingsUI.querySelector('#setting-nzb').addEventListener('change', function() {
+        settingsUI.querySelector('#setting-nzb').addEventListener('change', function () {
             const show = this.checked;
             settingsUI.querySelector('#setting-sabUrl-row').style.display = show ? '' : 'none';
             settingsUI.querySelector('#setting-nzbKey-row').style.display = show ? '' : 'none';
         });
-        settingsUI.querySelector('#setting-screenshots').addEventListener('change', function() {
+        settingsUI.querySelector('#setting-screenshots').addEventListener('change', function () {
             const show = this.value !== 'no';
             settingsUI.querySelector('#setting-previewSize-row').style.display = show ? '' : 'none';
             settingsUI.querySelector('#setting-subsByDefault-row').style.display = show ? '' : 'none';
         });
-        settingsUI.querySelector('#setting-attachments').addEventListener('change', function() {
+        settingsUI.querySelector('#setting-attachments').addEventListener('change', function () {
             const show = this.value !== 'no';
             settingsUI.querySelector('#setting-filtersByDefault-row').style.display = show ? '' : 'none';
             settingsUI.querySelector('#setting-languageFilters-row').style.display = show ? '' : 'none';
@@ -1648,7 +1646,7 @@ async function doSettings() {
         }, 0);
         // Patch closeSettingsUI to remove listeners
         const origCloseSettingsUI = closeSettingsUI;
-        closeSettingsUI = function() {
+        closeSettingsUI = function () {
             document.removeEventListener('mousedown', handleSettingsClick);
             document.removeEventListener('keydown', handleSettingsEsc);
             origCloseSettingsUI();
@@ -1759,7 +1757,7 @@ async function doSettings() {
     settingsLink.title = "NY-AT Settings";
     settingsLink.style.cursor = "pointer";
     settingsLink.id = "nyat-settings-link";
-    settingsLink.addEventListener("click", function(e) {
+    settingsLink.addEventListener("click", function (e) {
         e.preventDefault();
         const existingUI = document.getElementById("settings-ui");
         if (existingUI) {

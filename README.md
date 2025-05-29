@@ -1,17 +1,17 @@
 # Nyaa AnimeTosho Extender ION Fork
 
-Userscript that extends Nyaa view page with AnimeTosho information. Original script by [Jimbo](https://gitea.com/Jimbo/PT-Userscripts/src/branch/main/nyaa-animetosho.user.js). All information comes from [AnimeTosho](https://animetosho.org/) which only scrapes the Anime English-translated category, skips big files, and takes time to process new episodes.
+User script that extends Nyaa view page with AnimeTosho information. Original script by [Jimbo](https://gitea.com/Jimbo/PT-Userscripts/src/branch/main/nyaa-animetosho.user.js). All information comes from [AnimeTosho](https://animetosho.org/). AnimeTosho only scrapes the releases in the Anime English-translated category, skips big files, and takes time to process new episodes so not all pages will have complete information.
 
 ### Functionality
 - Link to AnimeTosho page
 - NZB link with option for unique sabUrl and NZB key
 - Fileinfo for the primary file
-- (New) Settings GUI to modularly enable what features you want
+- (New) Settings GUI to enable only the features you want
 - (New) Uses font icons instead of compressed images
 - (New) Link to AniDB/MyAnimeList/AniList
-- (New) Screenshots with a dropdown to select which subtitle track present in the screenshots
-- (New) Full-size screenshot viewer
-- (New) Attachment download options for all tracks and language filters
+- (New) Screenshots with a dropdown to select which subtitle track is present in the screenshots
+- (New) Full-sized screenshot viewer
+- (New) Attachments download options for all tracks with language filters
 - (New) Collapsible headings for everything
 
 ### Installation
@@ -40,5 +40,5 @@ Userscript that extends Nyaa view page with AnimeTosho information. Original scr
 ---
 
 ### Acknowledgements
-- AI was heavily used for this since I do not know js/html. Apologies for code quality but I will try my best to fix any issues.
+- AI was heavily used for this since I do not know js/html. Apologies for code quality but I will try my best to fix any issues
 - [animeApi](https://github.com/nattadasu/animeApi) for linking AniDB with other anime services
