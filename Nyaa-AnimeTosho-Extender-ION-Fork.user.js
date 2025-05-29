@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-12
+// @version      0.61-13
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -20,6 +20,7 @@
 // Jimbo's work with some additional features and tweaks (apologies for ai code, I don't know js or html)
 
 const defaultSettings = {
+    settingsPosition: "navbar", // "navbar" or "user dropdown"
     anidb: false,
     myanimelist: false,
     anilist: true,
@@ -1487,12 +1488,12 @@ async function doSettings() {
                 #settings-ui textarea {
                     width: 160px;
                     box-sizing: border-box;
-                                                                   color: #333;
-                                                                   padding: 5px;
-                                                                   border: 1px solid #ccc;
-                                                                   border-radius: 5px;
-                                                                   font-family: inherit;
-                                                                   font-size: inherit;
+                    color: #333;
+                    padding: 5px;
+                    border: 1px solid #ccc;
+                    border-radius: 5px;
+                    font-family: inherit;
+                    font-size: inherit;
                     background-color: #fff;
                     margin: 0;
                 }
@@ -1519,8 +1520,12 @@ async function doSettings() {
             </style>
             <div class="settings-header">Nyaa-AnimeTosho Extender <i class="fa fa-cog" aria-hidden="true"></i></div>
             <div style="margin-bottom: 10px;">
+                <label><span>settingsPosition</span><select id="setting-settingsPosition">
+                    <option value="navbar" ${settings.settingsPosition === 'navbar' ? 'selected' : ''}>Navbar</option>
+                    <option value="user dropdown" ${settings.settingsPosition === 'user dropdown' ? 'selected' : ''}>User dropdown</option>
+                </select></label>
                 ${Object.keys(settings)
-                .filter(key => !['nzb', 'sabUrl', 'nzbKey', 'screenshots', 'previewSize', 'subsByDefault', 'attachments', 'filtersByDefault', 'languageFilters'].includes(key))
+                .filter(key => !['nzb', 'sabUrl', 'nzbKey', 'screenshots', 'previewSize', 'subsByDefault', 'attachments', 'filtersByDefault', 'languageFilters', 'settingsPosition'].includes(key))
                 .map(key => {
                     let inputHtml = '';
                     if (typeof settings[key] === "boolean") {
@@ -1747,27 +1752,61 @@ async function doSettings() {
         document.getElementById("close-settings").addEventListener("click", closeSettingsUI);
     }
 
-    // Add settings button to navbar
-    const navbar = document.querySelector(".navbar-nav");
-    const settingsItem = document.createElement("li");
-    settingsItem.className = "nav-item";
-    const settingsLink = document.createElement("a");
-    settingsLink.className = "nav-link";
-    settingsLink.innerHTML = 'NY-AT <i class="fa fa-cog" aria-hidden="true"></i>';
-    settingsLink.title = "NY-AT Settings";
-    settingsLink.style.cursor = "pointer";
-    settingsLink.id = "nyat-settings-link";
-    settingsLink.addEventListener("click", function (e) {
-        e.preventDefault();
-        const existingUI = document.getElementById("settings-ui");
-        if (existingUI) {
-            existingUI.remove();
-        } else {
-            showSettingsUI();
+    // Add settings button to user dropdown menu or navbar based on setting
+    if (settings.settingsPosition === 'user dropdown') {
+        const userDropdownMenu = document.querySelector('.navbar-nav.navbar-right .dropdown-menu');
+        if (userDropdownMenu) {
+            const settingsItem = document.createElement("li");
+            const settingsLink = document.createElement("a");
+            settingsLink.innerHTML = ' <i class="fa fa-gear fa-fw" aria-hidden="true"></i> NY-AT';
+            settingsLink.title = "Nyaa AnimeTosho Extender Settings";
+            settingsLink.style.cursor = "pointer";
+            settingsLink.id = "nyat-settings-link";
+            settingsLink.addEventListener("click", function (e) {
+                e.preventDefault();
+                const existingUI = document.getElementById("settings-ui");
+                if (existingUI) {
+                    existingUI.remove();
+                } else {
+                    showSettingsUI();
+                }
+            });
+            settingsItem.appendChild(settingsLink);
+            // Find the Profile option
+            const profileItem = Array.from(userDropdownMenu.querySelectorAll('li > a')).find(a => a.getAttribute('href') === '/profile');
+            if (profileItem && profileItem.parentElement) {
+                if (profileItem.parentElement.nextSibling) {
+                    userDropdownMenu.insertBefore(settingsItem, profileItem.parentElement.nextSibling);
+                } else {
+                    userDropdownMenu.appendChild(settingsItem);
+                }
+            } else {
+                userDropdownMenu.appendChild(settingsItem);
+            }
         }
-    });
-    settingsItem.appendChild(settingsLink);
-    navbar.appendChild(settingsItem);
+    } else {
+        // Add settings button to main navbar (left side)
+        const navbar = document.querySelector(".navbar-nav");
+        if (navbar) {
+            const settingsItem = document.createElement("li");
+            const settingsLink = document.createElement("a");
+            settingsLink.innerHTML = ' <i class="fa fa-gear fa-fw" aria-hidden="true"></i> NY-AT';
+            settingsLink.title = "Nyaa AnimeTosho Extender Settings";
+            settingsLink.style.cursor = "pointer";
+            settingsLink.id = "nyat-settings-link";
+            settingsLink.addEventListener("click", function (e) {
+                e.preventDefault();
+                const existingUI = document.getElementById("settings-ui");
+                if (existingUI) {
+                    existingUI.remove();
+                } else {
+                    showSettingsUI();
+                }
+            });
+            settingsItem.appendChild(settingsLink);
+            navbar.appendChild(settingsItem);
+        }
+    }
 }
 
 (async function () {
