@@ -31,7 +31,7 @@ User script that extends Nyaa view page with AnimeTosho information. Original sc
 ---
 
 ### Notes
-- Access the settings GUI in the top nav bar. Settings should save over updates
+- Access the settings GUI in the top nav bar by default. It is only visible on /view pages as the extension is only active there. Settings should save over updates
 - sabUrl and NZB key are optional settings if you have them
 - Screenshots previews are loaded as jpgs, click in to see full png
 - SRT subtitles and maybe other formats are not included in the screenshot on AnimeTosho

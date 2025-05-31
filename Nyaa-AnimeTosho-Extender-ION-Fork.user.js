@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-13
+// @version      0.61-14
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -31,7 +31,7 @@ const defaultSettings = {
     nzbKey: "",
     screenshots: "show", // "no", "hide", or "show"
     previewSize: "compact", // "compact", "medium", "large", "huge"
-    subsByDefault: "first", // "no", "first"
+    subsByDefault: "first-nonforced", // "no", "first", "first-nonforced"
     attachments: "show", // "no", "hide", or "show"
     filtersByDefault: false,
     languageFilters: ["eng", "enm", "und"],
@@ -67,11 +67,9 @@ function fetchUrl(url, timeout = 10000) {
     });
 }
 
-async function fetchSubtitlesSection(url) {
+// Refactored: extractSubtitlesFromHtml(html)
+function extractSubtitlesFromHtml(html) {
     try {
-        const html = await fetchUrl(url);
-        // console.log(html)
-
         // Parse the HTML using DOMParser
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, "text/html");
@@ -101,7 +99,7 @@ async function fetchSubtitlesSection(url) {
 
         return subtitles;
     } catch (error) {
-        console.error("Error fetching or parsing subtitles:", error);
+        console.error("Error parsing subtitles:", error);
         return [];
     }
 }
@@ -157,10 +155,8 @@ function makePanelCollapsible(panel, startCollapsed = false) {
     });
 }
 
-async function fetchScreenshots(url) {
+function extractScreenshotsFromHtml(html) {
     try {
-        const html = await fetchUrl(url);
-
         // Find the screenshots section using regex
         const screenshotsRegex = /<th>Screenshots<\/th>.*?<td>(.*?)<\/td>/s;
         const match = html.match(screenshotsRegex);
@@ -190,9 +186,62 @@ async function fetchScreenshots(url) {
 
         return screenshots;
     } catch (error) {
-        console.error("Error fetching screenshots:", error);
+        console.error("Error parsing screenshots:", error);
         return [];
     }
+}
+
+// Extract fileinfo (mediainfo) from HTML by id
+function extractFileinfoFromHtml(html) {
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+        const el = doc.getElementById('file_addinfo');
+        if (!el) return '';
+        let raw = el.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+        // Decode HTML entities (including &nbsp;)
+        const txt = document.createElement('textarea');
+        txt.innerHTML = raw;
+        raw = txt.value;
+        return raw.trim();
+    } catch (error) {
+        console.error("Error extracting fileinfo from HTML:", error);
+        return '';
+    }
+}
+
+function parseSubtitleTracksFromFileinfo(fileinfoText) {
+    // Returns array of {id, forced, default, language, title}
+    const tracks = [];
+    if (!fileinfoText) return tracks;
+    // Split into lines
+    const lines = fileinfoText.split(/\r?\n/);
+    let current = null;
+    for (let line of lines) {
+        // Start of a new subtitle track
+        const m = line.match(/^Text #(\d+)/);
+        if (m) {
+            if (current) tracks.push(current);
+            current = { id: null, forced: false, default: false, language: '', title: '' };
+            continue;
+        }
+        if (!current) continue;
+        // Parse properties
+        const idMatch = line.match(/^ID[\s:]+(\d+)/i);
+        if (idMatch) current.id = idMatch[1];
+        if (/^Forced\s*:\s*Yes/i.test(line)) current.forced = true;
+        if (/^Forced\s*:\s*No/i.test(line)) current.forced = false;
+        if (/^Default\s*:\s*Yes/i.test(line)) current.default = true;
+        if (/^Default\s*:\s*No/i.test(line)) current.default = false;
+        const lang = line.match(/^Language\s*:\s*(.*)$/i);
+        if (lang) current.language = lang[1].trim();
+        const title = line.match(/^Title\s*:\s*(.*)$/i);
+        if (title) current.title = title[1].trim();
+    }
+    if (current) tracks.push(current);
+
+    // Only return tracks with a valid id
+    return tracks.filter(t => t.id !== null);
 }
 
 function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, trackName) {
@@ -747,7 +796,7 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
     document.body.appendChild(modalOverlay);
 }
 
-function addScreenshotsToPage(screenshots, subtitles, episodeTitle) {
+function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
     if (!screenshots.length || settings.screenshots === "no") return;
 
     // Create screenshots panel
@@ -921,13 +970,32 @@ function addScreenshotsToPage(screenshots, subtitles, episodeTitle) {
     }
 
     // Set initial track selection based on screenshotSubs setting
-    if (settings.subsByDefault === "first" && trackSelector.options.length > 1) {
-        trackSelector.selectedIndex = 1; // Select first track (index 0 is "No Track")
-        updateScreenshots(trackSelector.value);
-    } else {
-        trackSelector.selectedIndex = 0; // Select "No Track"
-        updateScreenshots("");
+    let initialTrackIndex = 0;
+    if (settings.subsByDefault === "first-nonforced") {
+        if (fileInfo) {
+            const tracks = parseSubtitleTracksFromFileinfo(fileInfo);
+            // console.log(fileInfo)
+            // console.log(tracks)
+            const nonForced = tracks.find(t => !t.forced);
+            if (nonForced) {
+                // Find the option in trackSelector that matches this id
+                for (let i = 0; i < trackSelector.options.length; i++) {
+                    if (trackSelector.options[i].text.includes(`Track ${nonForced.id}`)) {
+                        initialTrackIndex = i;
+                        break;
+                    }
+                }
+            } else if (trackSelector.options.length > 1) {
+                initialTrackIndex = 1; // fallback to first track
+            }
+        } else if (trackSelector.options.length > 1) {
+            initialTrackIndex = 1;
+        }
+    } else if (settings.subsByDefault === "first" && trackSelector.options.length > 1) {
+        initialTrackIndex = 1;
     }
+    trackSelector.selectedIndex = initialTrackIndex;
+    updateScreenshots(trackSelector.value);
 
     // Add change handler for track selector
     trackSelector.addEventListener("change", (e) => {
@@ -1164,14 +1232,17 @@ async function doFeatures() {
 
     let firstEpId = null;
     let firstEpFilename = null; // Without folder name
+    let countVidFiles = 0;
     if (tosho.files) {
         for (const file of tosho.files) {
             const filename = file.filename.toLowerCase();
             if (!filename.endsWith(".mkv") && !filename.endsWith(".mp4") && !filename.endsWith(".ts")) continue;
             if ((filename.startsWith("extra") || filename.startsWith("bonus") || filename.startsWith("special") || filename.startsWith("creditless")) && filename.includes("/")) continue;
-            firstEpId = file.id;
-            firstEpFilename = file.filename.split("/").pop();
-            break;
+            if (!firstEpId && !firstEpFilename) {
+                firstEpId = file.id;
+                firstEpFilename = file.filename.split("/").pop();
+            }
+            countVidFiles++;
         }
     }
 
@@ -1247,7 +1318,11 @@ async function doFeatures() {
         const animetosho = magnet?.cloneNode(true);
 
         animetosho.querySelector("i").remove()
-        animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho';
+        if (tosho.status != "skipped") {
+            animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho';
+        } else {
+            animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho (Skipped)';
+        }
         animetosho.href = toshoViewPageUrl
         animetosho.onclick = function () {
             window.open(toshoViewPageUrl, '_blank').focus();
@@ -1293,45 +1368,21 @@ async function doFeatures() {
         }
     }
 
-    let subtitles = [];
-    let batchFirstEp = "";
-    // Attachments
-    if (firstEpId && toshoViewPageUrl) {
-        subtitles = await fetchSubtitlesSection(toshoViewPageUrl);
-        // console.log(subtitles);
-        // Likely batch release so get the track attachments from first episode
-        if (subtitles.length == 1) {
-            if (subtitles[0].text == "All Attachments") {
-                subtitles[0].text = "All Attachments (Batch)";
-            }
-            batchFirstEp = `https://animetosho.org/file/${firstEpId}`;
-            const firstEpSubtitles = await fetchSubtitlesSection(batchFirstEp);
-            subtitles = [...subtitles, ...firstEpSubtitles.slice(1)];
-
-        }
-
-        if (settings.attachments !== "no" && subtitles.length > 0) {
-            addSubtitlesToTorrentList(subtitles, settings.attachments === "hide");
-        }
+    // Tosho fetches
+    let toshoHtml = null;
+    let firstEpHtml = null;
+    if (countVidFiles > 1) {
+        toshoHtml = await fetchUrl(toshoViewPageUrl);
     }
+    firstEpHtml = await fetchUrl(`https://animetosho.org/file/${firstEpId}`);
 
-    // Screenshots
-    if (toshoViewPageUrl && settings.screenshots !== "no") {
-        let screenshots = [];
-        if (batchFirstEp) {
-            screenshots = await fetchScreenshots(batchFirstEp);
-        } else {
-            screenshots = await fetchScreenshots(toshoViewPageUrl);
-        }
-        addScreenshotsToPage(screenshots, subtitles, firstEpFilename);
-    }
 
     // Fileinfo
-    if (firstEpId && settings.fileinfo) {
-        const fileInfo = await fetchUrl(`https://feed.animetosho.org/json?show=file&id=${firstEpId}`);
+    let fileInfo = null;
+    if (firstEpId) {
+        fileInfo = await extractFileinfoFromHtml(firstEpHtml);
         // console.log(fileInfo)
-        try {
-            if (!fileInfo.info.mediainfo);
+        if (fileInfo && settings.fileinfo) {
             let text = document.createTextNode(" or ");
             parent?.appendChild(text);
 
@@ -1359,7 +1410,7 @@ async function doFeatures() {
                         </style>
                     </head>
                     <body>
-                        <pre>${fileInfo.info.mediainfo}</pre>
+                        <pre>${fileInfo}</pre>
                     </body>
                     </html>
                 `;
@@ -1371,9 +1422,47 @@ async function doFeatures() {
             };
 
             parent?.appendChild(mediainfo);
-        } catch (e) {
         }
 
+    }
+
+
+    let subtitles = [];
+
+    // Attachments
+    if (firstEpId && toshoViewPageUrl) {
+        // Likely batch release so get the track attachments from first episode
+        if (countVidFiles > 1) {
+            toshoHtml = await fetchUrl(toshoViewPageUrl);
+            subtitles = extractSubtitlesFromHtml(toshoHtml);
+            // Check that it is a batch release
+            if (subtitles.length == 1 && subtitles[0].text == "All Attachments") {
+                subtitles[0].text = "All Attachments (Batch)";
+            }
+        }
+
+        // Get the track attachments from first episode
+        const firstEpSubtitles = extractSubtitlesFromHtml(firstEpHtml);
+        if (countVidFiles > 1) {
+            subtitles = [...subtitles, ...firstEpSubtitles.slice(1)];
+        } else {
+            subtitles = firstEpSubtitles;
+        }
+
+        if (settings.attachments !== "no" && subtitles.length > 0) {
+            addSubtitlesToTorrentList(subtitles, settings.attachments === "hide");
+        }
+    }
+
+    // Screenshots
+    if (toshoViewPageUrl && settings.screenshots !== "no") {
+        let screenshots = [];
+        if (firstEpHtml) {
+            screenshots = extractScreenshotsFromHtml(firstEpHtml);
+        } else if (toshoHtml) {
+            screenshots = extractScreenshotsFromHtml(toshoHtml);
+        }
+        addScreenshotsToPage(screenshots, fileInfo, subtitles, firstEpFilename);
     }
 
     // Delayed fetch so that the other ones are available faster
@@ -1453,11 +1542,29 @@ async function doSettings() {
         // Generate HTML content for settings
         settingsUI.innerHTML = `
             <style>
+                #settings-ui {
+                    position: fixed;
+                    top: 10px;
+                    right: 10px;
+                    left: auto;
+                    bottom: auto;
+                    width: 350px;
+                    max-width: 95vw;
+                    max-height: 90vh;
+                    overflow: auto;
+                    background-color: #333;
+                    border: 2px solid #ccc;
+                    border-radius: 10px;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                    padding: 15px;
+                    font-family: Arial, sans-serif;
+                    z-index: 1000;
+                }
                 #settings-ui .settings-header {
                     margin-top: 0;
                     text-align: center;
                     color: #ffffff;
-                    font-size: 20px;
+                    font-size: 19px;
                     font-weight: 600;
                     letter-spacing: 0.5px;
                     margin-bottom: 20px;
@@ -1560,6 +1667,7 @@ async function doSettings() {
                 <label id="setting-subsByDefault-row" style="${settings.screenshots !== 'no' ? '' : 'display:none;'}"><span>subsByDefault:</span><select id="setting-subsByDefault">
                     <option value="no" ${settings.subsByDefault === "no" ? "selected" : ""}>No Subtitles</option>
                     <option value="first" ${settings.subsByDefault === "first" ? "selected" : ""}>First Track</option>
+                    <option value="first-nonforced" ${settings.subsByDefault === "first-nonforced" ? "selected" : ""}>First Non-Forced</option>
                 </select></label>
                 <hr style="border: 0; border-top: 1px solid #555; margin: 15px 0;">
                 </div>
@@ -1750,6 +1858,13 @@ async function doSettings() {
         // Add event listeners for buttons
         document.getElementById("save-settings").addEventListener("click", saveSettings);
         document.getElementById("close-settings").addEventListener("click", closeSettingsUI);
+        // Add Enter key to save settings (except in textarea or select)
+        settingsUI.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && document.activeElement && document.activeElement.tagName !== 'TEXTAREA' && document.activeElement.tagName !== 'SELECT') {
+                e.preventDefault();
+                saveSettings();
+            }
+        });
     }
 
     // Add settings button to user dropdown menu or navbar based on setting
