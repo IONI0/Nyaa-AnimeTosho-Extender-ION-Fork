@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-15
+// @version      0.61-16
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -128,6 +128,8 @@ function makePanelCollapsible(panel, startCollapsed = false) {
     heading.style.display = "flex";
     heading.style.alignItems = "center";
     heading.style.padding = "10px 15px";
+    heading.style.maxHeight = "45px";
+    heading.style.overflow = "hidden";
 
     // Add collapse/expand icon if it doesn't exist
     if (!heading.querySelector('i.fa-chevron-down')) {
@@ -857,7 +859,11 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
     trackSelector.style.fontSize = "12px";
     trackSelector.style.borderRadius = "3px";
     trackSelector.style.cursor = "pointer";
-    trackSelector.style.height = "24px"; // Match filter button height
+    trackSelector.style.minHeight = "24px";
+    trackSelector.style.height = "auto";
+    trackSelector.style.lineHeight = "1.4";
+    trackSelector.style.paddingTop = "2px";
+    trackSelector.style.paddingBottom = "2px";
 
     // Function to update track selector style
     function updateTrackSelectorStyle() {
