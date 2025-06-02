@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-14
+// @version      0.61-15
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -67,7 +67,23 @@ function fetchUrl(url, timeout = 10000) {
     });
 }
 
-// Refactored: extractSubtitlesFromHtml(html)
+function isDarkMode() {
+    return localStorage.getItem("theme") === "dark";
+}
+
+function subscribeToThemeChange(callback) {
+    callback();
+    const observer = new MutationObserver(() => {
+        callback();
+    });
+    observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('storage', (e) => {
+        if (e.key === 'theme') {
+            callback();
+        }
+    });
+}
+
 function extractSubtitlesFromHtml(html) {
     try {
         // Parse the HTML using DOMParser
@@ -134,12 +150,22 @@ function makePanelCollapsible(panel, startCollapsed = false) {
     if (!body) return;
 
     let isCollapsed = startCollapsed;
+    // Helper to set visibility of buttons/selects in heading
+    function setHeaderControlsVisibility(visible) {
+        const controls = heading.querySelectorAll('button, select');
+        controls.forEach(ctrl => {
+            ctrl.style.visibility = visible ? 'visible' : 'hidden';
+        });
+    }
     if (startCollapsed) {
         body.style.display = "none";
         const icon = heading.querySelector('i.fa-chevron-down');
         if (icon) {
             icon.style.transform = "rotate(-90deg)";
         }
+        setHeaderControlsVisibility(false);
+    } else {
+        setHeaderControlsVisibility(true);
     }
 
     heading.addEventListener("click", (e) => {
@@ -152,6 +178,7 @@ function makePanelCollapsible(panel, startCollapsed = false) {
         if (icon) {
             icon.style.transform = isCollapsed ? "rotate(-90deg)" : "rotate(0deg)";
         }
+        setHeaderControlsVisibility(!isCollapsed);
     });
 }
 
@@ -828,12 +855,24 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
     trackSelector.style.marginLeft = "10px";
     trackSelector.style.padding = "4px 6px";
     trackSelector.style.fontSize = "12px";
-    trackSelector.style.border = "1px solid #444";
     trackSelector.style.borderRadius = "3px";
-    trackSelector.style.backgroundColor = "#6e757c";
-    trackSelector.style.color = "#fff";
     trackSelector.style.cursor = "pointer";
     trackSelector.style.height = "24px"; // Match filter button height
+
+    // Function to update track selector style
+    function updateTrackSelectorStyle() {
+        if (isDarkMode()) {
+            trackSelector.style.backgroundColor = "#6e757c";
+            trackSelector.style.color = "#fff";
+            trackSelector.style.border = "1px solid #636a70";
+        } else {
+            trackSelector.style.backgroundColor = "#fff";
+            trackSelector.style.color = "#333";
+            trackSelector.style.border = "1px solid #ccc";
+        }
+    }
+    // Subscribe to theme changes for the track selector
+    subscribeToThemeChange(updateTrackSelectorStyle);
 
     // Add "No Track" option
     const noTrackOption = document.createElement("option");
@@ -1042,7 +1081,7 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
     }
 }
 
-function addSubtitlesToTorrentList(subtitles, isFiltered) {
+function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
     const fileListPanel = document.querySelector(".panel.panel-default > .torrent-file-list.panel-body");
     if (!fileListPanel) {
         console.error("File list panel-body element not found.");
@@ -1074,6 +1113,9 @@ function addSubtitlesToTorrentList(subtitles, isFiltered) {
     title.style.fontSize = "16px";
     title.style.fontWeight = "500";
 
+    // Use a local variable for filter state
+    let isFiltered = isFilteredInit;
+
     const toggleButton = document.createElement("button");
     toggleButton.textContent = isFiltered ? "Filter ON" : "Filter OFF";
     toggleButton.className = "btn btn-sm";
@@ -1084,24 +1126,23 @@ function addSubtitlesToTorrentList(subtitles, isFiltered) {
     toggleButton.style.position = "relative";
     toggleButton.style.zIndex = "1";
 
-    // Define color schemes
-    const colorSchemes = {
-        success: {
-            normal: { bg: "#69cf64", border: "#2bc14a", color: "#fff" },
-            hover: { bg: "#28a745", border: "#1e7e34", color: "#fff" }
-        },
-        secondary: {
-            normal: { bg: "#6c757d", border: "#6c757d", color: "#fff" },
-            hover: { bg: "#5a6268", border: "#545b62", color: "#fff" }
-        }
-    };
-
     // Track current state for hover effects
     let isHovered = false;
 
     // Function to apply colors to button
     function applyColors() {
-        const scheme = settings.filtersByDefault ? colorSchemes.success : colorSchemes.secondary;
+        // Define color schemes dynamically so they always reflect the current theme
+        const colorSchemes = {
+            success: {
+                normal: { bg: isDarkMode() ? "#74b666" : "#74b666", border: "#2bc14a", color: "#fff" },
+                hover: { bg: "#28a745", border: "#1e7e34", color: "#fff" }
+            },
+            secondary: {
+                normal: { bg: isDarkMode() ? "#6c757d" : "#fff", border: isDarkMode() ? "#636a70" : "#ccc", color: isDarkMode() ? "#fff" : "#333" },
+                hover: { bg: isDarkMode() ? "#5a6268" : "#f2f2f2", border: isDarkMode() ? "#545b62" : "#bbb", color: isDarkMode() ? "#fff" : "#333" }
+            }
+        };
+        const scheme = isFiltered ? colorSchemes.success : colorSchemes.secondary;
         const colors = isHovered ? scheme.hover : scheme.normal;
         toggleButton.style.color = colors.color;
         toggleButton.style.backgroundColor = colors.bg;
@@ -1126,20 +1167,23 @@ function addSubtitlesToTorrentList(subtitles, isFiltered) {
 
     updateButtonStyle();
 
+    // Subscribe to theme changes for the filter button
+    subscribeToThemeChange(updateButtonStyle);
+
     // Body container for subtitle links
     const body = document.createElement("div");
     body.className = "panel-body";
 
     // Function to update the filtered subtitles list display
     function updateFiler() {
-        toggleButton.textContent = settings.filtersByDefault ? "Filter ON" : "Filter OFF";
+        toggleButton.textContent = isFiltered ? "Filter ON" : "Filter OFF";
         updateButtonStyle();
-        const filteredSubtitles = settings.filtersByDefault
+        const filteredSubtitles = isFiltered
             ? subtitles.filter(subtitle =>
                 settings.languageFilters.some(filter =>
-                    subtitle.text.includes(`${filter} [`) ||
-                    subtitle.text.includes(`[${filter},`) ||
-                    subtitle.text.includes("All Attachments")
+                    subtitle.text.includes(`${filter} [`)
+                    || subtitle.text.includes(`[${filter},`)
+                    || subtitle.text.includes("All Attachments")
                 )
             )
             : subtitles;
@@ -1164,7 +1208,7 @@ function addSubtitlesToTorrentList(subtitles, isFiltered) {
 
     toggleButton.addEventListener("click", (e) => {
         e.stopPropagation(); // Prevent the click from bubbling up to the header
-        settings.filtersByDefault = !settings.filtersByDefault;
+        isFiltered = !isFiltered;
         updateFiler();
     });
 
@@ -1318,10 +1362,12 @@ async function doFeatures() {
         const animetosho = magnet?.cloneNode(true);
 
         animetosho.querySelector("i").remove()
-        if (tosho.status != "skipped") {
-            animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho';
-        } else {
+        if (tosho.status == "skipped") {
             animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho (Skipped)';
+        } else if (tosho.status == "processing") {
+            animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho (Processing)';
+        } else {
+            animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho';
         }
         animetosho.href = toshoViewPageUrl
         animetosho.onclick = function () {
@@ -1450,7 +1496,7 @@ async function doFeatures() {
         }
 
         if (settings.attachments !== "no" && subtitles.length > 0) {
-            addSubtitlesToTorrentList(subtitles, settings.attachments === "hide");
+            addSubtitlesToTorrentList(subtitles, settings.filtersByDefault);
         }
     }
 
@@ -1926,7 +1972,7 @@ async function doSettings() {
 
 (async function () {
     'use strict';
-    document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">');
+    document.head.insertAdjacentHTML('beforeend', '<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">');
 
     await doSettings();
     await doFeatures();
