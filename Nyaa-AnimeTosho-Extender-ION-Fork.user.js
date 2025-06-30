@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-16
+// @version      0.61-17
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -12,6 +12,7 @@
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.registerMenuCommand
+// @require      https://cdn.jsdelivr.net/npm/xz-decompress@0.2.2/dist/package/xz-decompress.min.js
 // @match        https://nyaa.si/view/*
 // @run-at       document-end
 // ==/UserScript==
@@ -34,6 +35,8 @@ const defaultSettings = {
     subsByDefault: "first-nonforced", // "no", "first", "first-nonforced"
     attachments: "show", // "no", "hide", or "show"
     filtersByDefault: false,
+    attachmentAction: "view", // "view", "download", "download extracted"
+    highlighterStyle: "felipec", // highlight.js style name
     languageFilters: ["eng", "enm", "und"],
 }
 
@@ -932,11 +935,24 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
         // Clear existing screenshots
         gridContainer.innerHTML = '';
 
+        // Try to extract aspect ratio from fileInfo
+        let aspectRatio = 16 / 9; // default
+        if (fileInfo) {
+            const match = fileInfo.match(/Display aspect ratio\s*:\s*(\d+(?:\.\d+)?):(\d+(?:\.\d+)?)/);
+            if (match) {
+                const w = parseFloat(match[1]);
+                const h = parseFloat(match[2]);
+                if (w > 0 && h > 0) {
+                    aspectRatio = h / w;
+                }
+            }
+        }
+
         screenshots.forEach(({ url, thumbnail, title }) => {
             const imgContainer = document.createElement("div");
             imgContainer.style.position = "relative";
             imgContainer.style.width = "100%";
-            imgContainer.style.paddingBottom = "56.25%"; // Default 16:9 aspect ratio
+            imgContainer.style.paddingBottom = `${aspectRatio * 100}%`;
             imgContainer.style.overflow = "hidden";
             imgContainer.style.borderRadius = "4px";
             imgContainer.style.cursor = "pointer";
@@ -1087,6 +1103,15 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
     }
 }
 
+async function getValidHighlighterStyle(styleName) {
+    const url = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/${styleName}.css`;
+    try {
+        const resp = await fetch(url, { method: 'HEAD' });
+        if (resp.ok) return styleName;
+    } catch { }
+    return 'atom-one-dark';
+}
+
 function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
     const fileListPanel = document.querySelector(".panel.panel-default > .torrent-file-list.panel-body");
     if (!fileListPanel) {
@@ -1181,7 +1206,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
     body.className = "panel-body";
 
     // Function to update the filtered subtitles list display
-    function updateFiler() {
+    function updateFilter() {
         toggleButton.textContent = isFiltered ? "Filter ON" : "Filter OFF";
         updateButtonStyle();
         const filteredSubtitles = isFiltered
@@ -1199,6 +1224,316 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
             anchor.href = link;
             anchor.textContent = text;
             anchor.target = "_blank";
+            // Custom action for subtitle attachments if actionByDefault is 'view' and not 'All Attachments'
+            if (settings.attachmentAction === 'view' && !text.includes('All Attachments')) {
+                anchor.addEventListener('click', async function(e) {
+                    e.preventDefault();
+                    const isAssFile = /\.ass(\.xz)?$/i.test(link);
+                    try {
+                        // Fetch the subtitle file as a stream
+                        const response = await fetch(link);
+                        if (!response.ok) throw new Error('Failed to fetch subtitle');
+                        const responseClone = response.clone();
+                        // Decompress using xz-decompress streaming API
+                        const XzReadableStream = window['xz-decompress']?.XzReadableStream;
+                        if (!XzReadableStream) throw new Error('XZ decompressor not found');
+                        // Create XZ decompression stream directly from the response body
+                        const decompressedStream = new XzReadableStream(response.body);
+                        // Create a Response object to easily get the text
+                        const decompressedResponse = new Response(decompressedStream);
+                        // Get the decompressed text
+                        const decompressedText = await decompressedResponse.text();
+                        // Store the original response blob for reuse
+                        const originalSubtitleBlob = await responseClone.blob();
+                        // Open in new tab
+                        const htmlContent = `
+                            <!DOCTYPE html>
+                            <html>
+                            <head>
+                                <meta charset='utf-8'>
+                                <title>${text.replace(/</g, '&lt;')}</title>
+                                <style>
+                                    body {
+                                        background-color: #121212;
+                                        color: #ffffff;
+                                        font-family: Arial, sans-serif;
+                                        padding: 0px;
+                                        margin-top: 0 !important;
+                                    }
+                                    .button-bar {
+                                        display: flex;
+                                        gap: 10px;
+                                        margin: 18px 0 18px 0;
+                                        justify-content: flex-start;
+                                        margin-bottom: 8px;
+                                    }
+                                    .nyat-btn {
+                                        background: #232323;
+                                        color: #fff;
+                                        border: 1px solid #555;
+                                        border-radius: 6px;
+                                        padding: 7px 10px;
+                                        font-size: 15px;
+                                        cursor: pointer;
+                                        transition: background 0.2s, border 0.2s;
+                                        margin-bottom: 8px;
+                                    }
+                                    .nyat-btn:hover {
+                                        background: #333;
+                                        border: 1px solid #4CAF50;
+                                        color: #b0ffb0;
+                                    }
+                                    .nyat-title-bar {
+                                        position: sticky;
+                                        top: 0;
+                                        margin: 0 0 0 0;
+                                        padding: 0 0 0 0;
+                                        border-bottom: 1px solid #333;
+                                    }
+                                    .nyat-filename {
+                                        font-size: 16px;
+                                        color: #ffffff;
+                                        font-weight: 700;
+                                        margin-left: 12px;
+                                        margin-bottom: 2px;
+                                        white-space: nowrap;
+                                        overflow: hidden;
+                                        text-overflow: ellipsis;
+                                        max-width: 100%;
+                                    }
+                                    .nyat-tracktitle {
+                                        font-size: 14px;
+                                        color: #fff;
+                                        font-weight: 400;
+                                        opacity: 0.6;
+                                        margin-left: 12px;
+                                        margin-bottom: 8px;
+                                        white-space: nowrap;
+                                        overflow: hidden;
+                                        text-overflow: ellipsis;
+                                        max-width: 100%;
+                                    }
+                                    pre {
+                                        white-space: pre;
+                                        overflow-x: auto;
+                                        overflow-y: auto;
+                                        padding: 1em;
+                                        background: #232323;
+                                    }
+                                    pre > code.hljs {
+                                        margin: -1em !important;
+                                    }
+                                </style>
+                                ${isAssFile ? `
+                                <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/${settings.highlighterStyle}.css">
+                                <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
+                                <script src="https://cdn.jsdelivr.net/npm/highlightjs-ass@1.0.1/dist/ass.min.js"></script>
+                                ` : ''}
+                            </head>
+                            <body>
+                                <div style="display: flex; align-items: center; gap: 12px; width: 100%; border-bottom: 1px solid #333; padding-top: 8px; padding-bottom: 0px; position: sticky; top: 0; background: #121212; z-index: 10;">
+                                    <div style="display: flex; flex-direction: column; flex: 1 1 0; min-width: 0;">
+                                        <div class="nyat-filename" id="nyat-filename"></div>
+                                        <div class="nyat-tracktitle">${text.replace(/</g, '&lt;')}</div>
+                                    </div>
+                                    <div class="button-bar" style="margin:0; flex-shrink: 0; display: flex; gap: 8px;">
+                                        ${isAssFile  ? `<button class="nyat-btn" id="toggle-highlight">Highlighting: OFF</button>` : ''}
+                                        <button class="nyat-btn" id="download-xz">Download</button>
+                                        <button class="nyat-btn" id="download-extracted">Download Extracted</button>
+                                        <input type="hidden" id="nyat-original-link" value="">
+                                    </div>
+                                </div>
+                                ${isAssFile ? `<pre><code class="language-ass">${decompressedText.replace(/</g, '&lt;')}</code></pre>` : `<pre>${decompressedText.replace(/</g, '&lt;')}</pre>`}
+                                <script>
+                                // Helper to get filename from URL (including query params if present)
+                                function getFileNameFromUrl(url) {
+                                    try {
+                                        const u = new URL(url);
+                                        let name = u.pathname.split('/').pop() || 'subtitle.xz';
+                                        // If Content-Disposition is present in query, use it
+                                        const cd = u.searchParams.get('response-content-disposition');
+                                        if (cd) {
+                                            const match = cd.match(/filename\*=UTF-8''([^;]+)/);
+                                            if (match) {
+                                                name = decodeURIComponent(match[1]);
+                                            }
+                                        }
+                                        // Decode any percent-encoded characters (e.g. %5B, %5D)
+                                        name = decodeURIComponent(name);
+                                        return name;
+                                    } catch {
+                                        return 'subtitle.xz';
+                                    }
+                                }
+                                // Set the original link from the opener (if available)
+                                (function() {
+                                    let fileUrl = '';
+                                    let originalBlob = null;
+                                    try {
+                                        if (window.opener && window.opener._nyat_subtitle_url) {
+                                            fileUrl = window.opener._nyat_subtitle_url;
+                                            if (window.opener._nyat_subtitle_blob) {
+                                                originalBlob = window.opener._nyat_subtitle_blob;
+                                            }
+                                        } else if (window.name && window.name.startsWith('nyat_subtitle:')) {
+                                            fileUrl = window.name.replace('nyat_subtitle:', '');
+                                        }
+                                    } catch {}
+                                    document.getElementById('nyat-original-link').value = fileUrl;
+                                    // Set the filename in the title bar, removing .xz extension if present
+                                    let displayName = getFileNameFromUrl(fileUrl).replace(/\.xz$/i, '');
+                                    document.getElementById('nyat-filename').textContent = displayName;
+                                    // Store the blob for download
+                                    window._nyat_subtitle_blob = originalBlob;
+                                })();
+                                // Download original .xz file
+                                document.getElementById('download-xz').onclick = async function() {
+                                    const fileUrl = document.getElementById('nyat-original-link').value;
+                                    let blob = window._nyat_subtitle_blob;
+                                    if (!blob) {
+                                        // fallback: fetch if not available (should not happen)
+                                        try {
+                                            const resp = await fetch(fileUrl);
+                                            if (!resp.ok) throw new Error('Failed to fetch original file');
+                                            blob = await resp.blob();
+                                        } catch (err) {
+                                            alert('Download failed: ' + err.message);
+                                            return;
+                                        }
+                                    }
+                                    const a = document.createElement('a');
+                                    a.href = URL.createObjectURL(blob);
+                                    a.download = getFileNameFromUrl(fileUrl);
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+                                    document.body.removeChild(a);
+                                };
+                                // Download extracted subtitle
+                                document.getElementById('download-extracted').onclick = function() {
+                                    const fileUrl = document.getElementById('nyat-original-link').value;
+                                    let baseName = getFileNameFromUrl(fileUrl).replace(/\.xz$/i, '');
+                                    if (!baseName) baseName = 'subtitle';
+                                    const blob = new Blob([document.querySelector('pre').innerText], {type: 'text/plain'});
+                                    const a = document.createElement('a');
+                                    a.href = URL.createObjectURL(blob);
+                                    a.download = baseName;
+                                    document.body.appendChild(a);
+                                    a.click();
+                                    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+                                    document.body.removeChild(a);
+                                };
+                                // Highlight ASS if needed
+                                ${isAssFile ? `
+                                (function() {
+                                    let highlighted = false;
+                                    const btn = document.getElementById('toggle-highlight');
+                                    const code = document.querySelector('code.language-ass');
+                                    if (btn && code) {
+                                        const plainText = code.textContent;
+                                        console.log('Subtitle plainText length:', plainText.length);
+                                        let highlightedHtml = null;
+                                        // Highlight by default if the subtitle is small enough
+                                        if (plainText.length <= 100000) {
+                                            window.hljs.highlightElement(code);
+                                            highlightedHtml = code.innerHTML;
+                                            btn.textContent = 'Highlight: ON';
+                                            highlighted = true;
+                                        }
+                                        btn.onclick = function() {
+                                            if (!highlighted) {
+                                                if (plainText.length > 100000 && !highlightedHtml) {
+                                                    if (!confirm('This file is large (' + plainText.length + ' characters) and highlighting may be slow or freeze your browser. Proceed anyway?')) {
+                                                        return;
+                                                    }
+                                                }
+                                                if (!highlightedHtml) {
+                                                    window.hljs.highlightElement(code);
+                                                    highlightedHtml = code.innerHTML;
+                                                } else {
+                                                    code.innerHTML = highlightedHtml;
+                                                }
+                                                code.classList.add('hljs');
+                                                btn.textContent = 'Highlight: ON';
+                                                highlighted = true;
+                                            } else {
+                                                code.classList.remove('hljs');
+                                                code.textContent = plainText;
+                                                btn.textContent = 'Highlight: OFF';
+                                                highlighted = false;
+                                            }
+                                        };
+                                    }
+                                })();
+                                ` : ''}
+                                </script>
+                            </body>
+                            </html>
+                        `;
+                        // Pass the original link and blob to the new tab for download (use window.name as fallback)
+                        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                        const url = URL.createObjectURL(blob);
+                        // Try to pass via window.opener, fallback to window.name
+                        let win = window.open(url, '_blank');
+                        if (win) {
+                            try { win._nyat_subtitle_url = link; } catch {}
+                            try { win._nyat_subtitle_blob = originalSubtitleBlob; } catch {}
+                            try { win.name = 'nyat_subtitle:' + link; } catch {}
+                        }
+                    } catch (err) {
+                        alert('Failed to view subtitle: ' + err.message);
+                    }
+                });
+            } else if (settings.attachmentAction === 'download extracted' && !text.includes('All Attachments')) {
+                anchor.addEventListener('click', async function(e) {
+                    e.preventDefault();
+                    try {
+                        // Fetch the subtitle file as a stream
+                        const response = await fetch(link);
+                        if (!response.ok) throw new Error('Failed to fetch subtitle');
+                        const responseClone = response.clone();
+                        // Decompress using xz-decompress streaming API
+                        const XzReadableStream = window['xz-decompress']?.XzReadableStream;
+                        if (!XzReadableStream) throw new Error('XZ decompressor not found');
+                        // Create XZ decompression stream directly from the response body
+                        const decompressedStream = new XzReadableStream(response.body);
+                        // Create a Response object to easily get the text
+                        const decompressedResponse = new Response(decompressedStream);
+                        // Get the decompressed text
+                        const decompressedText = await decompressedResponse.text();
+                        // Download extracted subtitle
+                        let baseName = (function() {
+                            try {
+                                const u = new URL(link);
+                                let name = u.pathname.split('/').pop() || 'subtitle.xz';
+                                // If Content-Disposition is present in query, use it
+                                const cd = u.searchParams.get('response-content-disposition');
+                                if (cd) {
+                                    const match = cd.match(/filename\*=UTF-8''([^;]+)/);
+                                    if (match) {
+                                        name = decodeURIComponent(match[1]);
+                                    }
+                                }
+                                // Decode any percent-encoded characters (e.g. %5B, %5D)
+                                name = decodeURIComponent(name);
+                                return name.replace(/\.xz$/i, '');
+                            } catch {
+                                return 'subtitle';
+                            }
+                        })();
+                        const blob = new Blob([decompressedText], {type: 'text/plain'});
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = baseName;
+                        document.body.appendChild(a);
+                        a.click();
+                        setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+                        document.body.removeChild(a);
+                    } catch (err) {
+                        alert('Failed to download extracted subtitle: ' + err.message);
+                    }
+                });
+            }
             body.appendChild(anchor);
             if (index < filteredSubtitles.length - 1) {
                 if (index < subtitles.length - 1) {
@@ -1215,7 +1550,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
     toggleButton.addEventListener("click", (e) => {
         e.stopPropagation(); // Prevent the click from bubbling up to the header
         isFiltered = !isFiltered;
-        updateFiler();
+        updateFilter();
     });
 
     // Add title and button to the left section
@@ -1241,8 +1576,8 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
     // Make attachments panel collapsible
     makePanelCollapsible(attachmentsPanel, settings.attachments === "hide");
 
-    // **Call updateFiler once here to respect filtersByDefault on initial load**
-    updateFiler();
+    // **Call updateFilter once here to respect filtersByDefault on initial load**
+    updateFilter();
 }
 
 async function doFeatures() {
@@ -1444,10 +1779,13 @@ async function doFeatures() {
             mediainfo.href = "#";
 
             mediainfo.onclick = function () {
+                // Try to get the filename for the title
+                let fileTitle = firstEpFilename || 'Fileinfo';
                 const htmlContent = `
                     <!DOCTYPE html>
                     <html>
                     <head>
+                        <title>${fileTitle.replace(/</g, '&lt;')}</title>
                         <style>
                             body {
                                 background-color: #121212;
@@ -1546,9 +1884,22 @@ async function doSettings() {
     // Save settings function
     async function saveSettings() {
         const updatedSettings = {};
+        // Validate highlighterStyle first
+        const highlighterEl = document.getElementById('setting-highlighterStyle');
+        if (highlighterEl) {
+            const val = highlighterEl.value.trim();
+            const styleName = await getValidHighlighterStyle(val);
+            if (styleName !== val) {
+                alert(`Highlight.js style '${val}' was not found. Please update your highlighterStyle with a valid highlight.js style.`);
+                return;
+            }
+        }
         Object.keys(settings).forEach(key => {
             const el = document.getElementById(`setting-${key}`);
-            if (typeof settings[key] === "boolean") {
+            if (!el) return;
+            if (key === "highlighterStyle") {
+                updatedSettings[key] = el.value.trim();
+            } else if (typeof settings[key] === "boolean") {
                 updatedSettings[key] = el.checked;
             } else if (Array.isArray(settings[key])) {
                 updatedSettings[key] = el.value.split(",").map(s => s.trim());
@@ -1556,7 +1907,6 @@ async function doSettings() {
                 updatedSettings[key] = el.value;
             }
         });
-
         await GM.setValue("settings", updatedSettings);
         closeSettingsUI();
         location.reload(); // Reload page to reflect changes
@@ -1582,7 +1932,7 @@ async function doSettings() {
         settingsUI.style.position = "fixed";
         settingsUI.style.top = "10px";
         settingsUI.style.right = "10px";
-        settingsUI.style.width = "350px";
+        settingsUI.style.width = "360px";
         settingsUI.style.backgroundColor = "#333";
         settingsUI.style.border = "2px solid #ccc";
         settingsUI.style.borderRadius = "10px";
@@ -1600,7 +1950,7 @@ async function doSettings() {
                     right: 10px;
                     left: auto;
                     bottom: auto;
-                    width: 350px;
+                    width: 360px;
                     max-width: 95vw;
                     max-height: 90vh;
                     overflow: auto;
@@ -1684,7 +2034,7 @@ async function doSettings() {
                     <option value="user dropdown" ${settings.settingsPosition === 'user dropdown' ? 'selected' : ''}>User dropdown</option>
                 </select></label>
                 ${Object.keys(settings)
-                .filter(key => !['nzb', 'sabUrl', 'nzbKey', 'screenshots', 'previewSize', 'subsByDefault', 'attachments', 'filtersByDefault', 'languageFilters', 'settingsPosition'].includes(key))
+                .filter(key => !['nzb', 'sabUrl', 'nzbKey', 'screenshots', 'previewSize', 'subsByDefault', 'attachments', 'filtersByDefault', 'languageFilters', 'settingsPosition', 'attachmentAction', 'highlighterStyle'].includes(key))
                 .map(key => {
                     let inputHtml = '';
                     if (typeof settings[key] === "boolean") {
@@ -1731,6 +2081,12 @@ async function doSettings() {
                         <option value="show" ${settings.attachments === "show" ? "selected" : ""}>Show</option>
                     </select></label>
                 <label id="setting-filtersByDefault-row" style="${settings.attachments !== 'no' ? '' : 'display:none;'}"><span>filtersByDefault:</span><input type="checkbox" id="setting-filtersByDefault" ${settings.filtersByDefault ? "checked" : ""} style="transform: scale(1.2);"></label>
+                <label id="setting-attachmentAction-row" style="${settings.attachments !== 'no' ? '' : 'display:none;'}"><span>attachmentAction</span><select id="setting-attachmentAction">
+                    <option value="view" ${settings.attachmentAction === 'view' ? 'selected' : ''}>View</option>
+                    <option value="download" ${settings.attachmentAction === 'download' ? 'selected' : ''}>Download</option>
+                    <option value="download extracted" ${settings.attachmentAction === 'download extracted' ? 'selected' : ''}>Download Extracted</option>
+                </select></label>
+                <label id="setting-highlighterStyle-row" style="${settings.attachments !== 'no' && settings.attachmentAction === 'view' ? '' : 'display:none;'}"><span>highlighterStyle:</span><textarea id="setting-highlighterStyle" rows="1" style="resize: none; overflow: hidden; min-height: 30px; max-height: 30px; white-space: nowrap;">${settings.highlighterStyle}</textarea></label>
                 <label id="setting-languageFilters-row" style="${settings.attachments !== 'no' ? '' : 'display:none;'}"><span>languageFilters:</span><textarea id="setting-languageFilters" rows="1" style="resize: none; overflow: hidden; max-height: 60px;">${Array.isArray(settings.languageFilters) ? settings.languageFilters.join(",") : settings.languageFilters}</textarea></label>
                 <hr style="border: 0; border-top: 1px solid #555; margin: 15px 0;">
                 </div>
@@ -1778,6 +2134,9 @@ async function doSettings() {
         settingsUI.querySelector('#setting-attachments').addEventListener('change', function () {
             const show = this.value !== 'no';
             settingsUI.querySelector('#setting-filtersByDefault-row').style.display = show ? '' : 'none';
+            settingsUI.querySelector('#setting-attachmentAction-row').style.display = show ? '' : 'none';
+            const attachmentAction = settingsUI.querySelector('#setting-attachmentAction').value;
+            settingsUI.querySelector('#setting-highlighterStyle-row').style.display = show && attachmentAction === 'view' ? '' : 'none';
             settingsUI.querySelector('#setting-languageFilters-row').style.display = show ? '' : 'none';
             // Auto-expand the languageFilters textarea if shown
             if (show) {
@@ -1787,6 +2146,10 @@ async function doSettings() {
                     textarea.style.height = textarea.scrollHeight + 'px';
                 }
             }
+        });
+        settingsUI.querySelector('#setting-attachmentAction').addEventListener('change', function () {
+            const show = settingsUI.querySelector('#setting-attachments').value !== 'no' && this.value === 'view';
+            settingsUI.querySelector('#setting-highlighterStyle-row').style.display = show ? '' : 'none';
         });
 
         // Append settings UI to the body

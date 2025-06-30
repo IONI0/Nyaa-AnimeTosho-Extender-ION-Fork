@@ -11,7 +11,8 @@ User script that extends Nyaa view page with AnimeTosho information. Original sc
 - (New) Link to AniDB/MyAnimeList/AniList
 - (New) Screenshots with a dropdown to select which subtitle track is present in the screenshots
 - (New) Full-sized screenshot viewer
-- (New) Attachments download options for all tracks with language filters
+- (New) Attachments download options for all tracks with language filters, option to download extracted
+- (New) View subtitle content in new tab in one click with ASS syntax highlighting
 - (New) Collapsible headings for everything
 
 ### Installation
@@ -30,15 +31,26 @@ User script that extends Nyaa view page with AnimeTosho information. Original sc
 
 ---
 
+### Subtitle Content Viewer
+![Subtitle Content Viewer](subtitle_content_viewer.jpg)
+
+---
+
 ### Notes
 - Access the settings GUI in the top nav bar by default. It is only visible on /view pages as the extension is only active there. Settings should save over updates
 - sabUrl and NZB key are optional settings if you have them
 - Screenshots previews are loaded as jpgs, click in to see full png
 - SRT subtitles and maybe other formats are not included in the screenshot on AnimeTosho
 - For batch releases, Attachments will show All Attachments for everything and the individual tracks for the first episode only
+- ASS syntax highlighting is automatically enabled only for sub files with under 100,000 characters.
+- You can also choose your own highlighter js styles. Try selecting from here https://highlightjs.org/examples
+- Subtitle contenting viewing and extracting only works for individual subtitle tracks not `All Attachments`
 
 ---
 
 ### Acknowledgements
-- AI was heavily used for this since I do not know js/html. Apologies for code quality but I will try my best to fix any issues
+- AI was heavily used for this project since I do not know js/html. Apologies for code quality but I will try my best to fix any issues
 - [animeApi](https://github.com/nattadasu/animeApi) for linking AniDB with other anime services
+- [xz-decompress](https://github.com/httptoolkit/xz-decompress) for decompressing xz when downloading subtitle tracks
+- [highlight.js](https://github.com/highlightjs/highlight.js) for syntax highlighting
+- [highlightjs-ass](https://github.com/GrygrFlzr/highlightjs-ass/) for ASS syntax highlighting plugin
