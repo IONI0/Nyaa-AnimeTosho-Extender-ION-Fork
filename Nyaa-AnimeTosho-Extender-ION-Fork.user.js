@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-17
+// @version      0.61-18
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -1112,6 +1112,27 @@ async function getValidHighlighterStyle(styleName) {
     return 'atom-one-dark';
 }
 
+// Utility: Extract filename from URL (including query params if present)
+function getFileNameFromUrl(url) {
+    try {
+        const u = new URL(url);
+        let name = u.pathname.split('/').pop() || 'subtitle.xz';
+        // If Content-Disposition is present in query, use it
+        const cd = u.searchParams.get('response-content-disposition');
+        if (cd) {
+            const match = cd.match(/filename\*=UTF-8''([^;]+)/);
+            if (match) {
+                name = decodeURIComponent(match[1]);
+            }
+        }
+        // Decode any percent-encoded characters (e.g. %5B, %5D)
+        name = decodeURIComponent(name);
+        return name;
+    } catch {
+        return 'subtitle.xz';
+    }
+}
+
 function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
     const fileListPanel = document.querySelector(".panel.panel-default > .torrent-file-list.panel-body");
     if (!fileListPanel) {
@@ -1245,13 +1266,15 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                         const decompressedText = await decompressedResponse.text();
                         // Store the original response blob for reuse
                         const originalSubtitleBlob = await responseClone.blob();
+                        // Get the filename from the URL
+                        const fileName = getFileNameFromUrl(link).replace(/</g, '&lt;');
                         // Open in new tab
                         const htmlContent = `
                             <!DOCTYPE html>
                             <html>
                             <head>
                                 <meta charset='utf-8'>
-                                <title>${text.replace(/</g, '&lt;')}</title>
+                                <title>${fileName.replace(/\.xz$/i, '') } - ${text.replace(/</g, '&lt;')}</title>
                                 <style>
                                     body {
                                         background-color: #121212;
@@ -1345,35 +1368,18 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                 </div>
                                 ${isAssFile ? `<pre><code class="language-ass">${decompressedText.replace(/</g, '&lt;')}</code></pre>` : `<pre>${decompressedText.replace(/</g, '&lt;')}</pre>`}
                                 <script>
-                                // Helper to get filename from URL (including query params if present)
-                                function getFileNameFromUrl(url) {
-                                    try {
-                                        const u = new URL(url);
-                                        let name = u.pathname.split('/').pop() || 'subtitle.xz';
-                                        // If Content-Disposition is present in query, use it
-                                        const cd = u.searchParams.get('response-content-disposition');
-                                        if (cd) {
-                                            const match = cd.match(/filename\*=UTF-8''([^;]+)/);
-                                            if (match) {
-                                                name = decodeURIComponent(match[1]);
-                                            }
-                                        }
-                                        // Decode any percent-encoded characters (e.g. %5B, %5D)
-                                        name = decodeURIComponent(name);
-                                        return name;
-                                    } catch {
-                                        return 'subtitle.xz';
-                                    }
-                                }
-                                // Set the original link from the opener (if available)
+                                // Set the original link and filename from the opener (if available)
                                 (function() {
-                                    let fileUrl = '';
                                     let originalBlob = null;
+                                    let fileName = '';
                                     try {
                                         if (window.opener && window.opener._nyat_subtitle_url) {
                                             fileUrl = window.opener._nyat_subtitle_url;
                                             if (window.opener._nyat_subtitle_blob) {
                                                 originalBlob = window.opener._nyat_subtitle_blob;
+                                            }
+                                            if (window.opener._nyat_subtitle_filename) {
+                                                fileName = window.opener._nyat_subtitle_filename;
                                             }
                                         } else if (window.name && window.name.startsWith('nyat_subtitle:')) {
                                             fileUrl = window.name.replace('nyat_subtitle:', '');
@@ -1381,7 +1387,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                     } catch {}
                                     document.getElementById('nyat-original-link').value = fileUrl;
                                     // Set the filename in the title bar, removing .xz extension if present
-                                    let displayName = getFileNameFromUrl(fileUrl).replace(/\.xz$/i, '');
+                                    let displayName = window._nyat_subtitle_filename.replace(/\.xz$/i, '');
                                     document.getElementById('nyat-filename').textContent = displayName;
                                     // Store the blob for download
                                     window._nyat_subtitle_blob = originalBlob;
@@ -1403,7 +1409,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                     }
                                     const a = document.createElement('a');
                                     a.href = URL.createObjectURL(blob);
-                                    a.download = getFileNameFromUrl(fileUrl);
+                                    a.download = window._nyat_subtitle_filename;
                                     document.body.appendChild(a);
                                     a.click();
                                     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -1412,7 +1418,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                 // Download extracted subtitle
                                 document.getElementById('download-extracted').onclick = function() {
                                     const fileUrl = document.getElementById('nyat-original-link').value;
-                                    let baseName = getFileNameFromUrl(fileUrl).replace(/\.xz$/i, '');
+                                    let baseName = window._nyat_subtitle_filename.replace(/\.xz$/i, '');
                                     if (!baseName) baseName = 'subtitle';
                                     const blob = new Blob([document.querySelector('pre').innerText], {type: 'text/plain'});
                                     const a = document.createElement('a');
@@ -1431,7 +1437,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                     const code = document.querySelector('code.language-ass');
                                     if (btn && code) {
                                         const plainText = code.textContent;
-                                        console.log('Subtitle plainText length:', plainText.length);
+                                        console.log('Subtitle plainText length:', plainText.length.toLocaleString());
                                         let highlightedHtml = null;
                                         // Highlight by default if the subtitle is small enough
                                         if (plainText.length <= 100000) {
@@ -1443,7 +1449,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                         btn.onclick = function() {
                                             if (!highlighted) {
                                                 if (plainText.length > 100000 && !highlightedHtml) {
-                                                    if (!confirm('This file is large (' + plainText.length + ' characters) and highlighting may be slow or freeze your browser. Proceed anyway?')) {
+                                                    if (!confirm('This file is large (' + plainText.length.toLocaleString() + ' characters) and highlighting may be slow or freeze your browser. Proceed anyway?')) {
                                                         return;
                                                     }
                                                 }
@@ -1478,6 +1484,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                         if (win) {
                             try { win._nyat_subtitle_url = link; } catch {}
                             try { win._nyat_subtitle_blob = originalSubtitleBlob; } catch {}
+                            try { win._nyat_subtitle_filename = fileName; } catch {}
                             try { win.name = 'nyat_subtitle:' + link; } catch {}
                         }
                     } catch (err) {
