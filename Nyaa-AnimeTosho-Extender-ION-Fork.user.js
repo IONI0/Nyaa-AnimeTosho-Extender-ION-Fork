@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-18
+// @version      0.61-19
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -36,6 +36,7 @@ const defaultSettings = {
     attachments: "show", // "no", "hide", or "show"
     filtersByDefault: false,
     attachmentAction: "view", // "view", "download", "download extracted"
+    highlighterCharCap: 100000, // Under this amount of characters, the highlighter will be enabled by default when viewing
     highlighterStyle: "felipec", // highlight.js style name
     languageFilters: ["eng", "enm", "und"],
 }
@@ -1247,7 +1248,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
             anchor.target = "_blank";
             // Custom action for subtitle attachments if actionByDefault is 'view' and not 'All Attachments'
             if (settings.attachmentAction === 'view' && !text.includes('All Attachments')) {
-                anchor.addEventListener('click', async function(e) {
+                anchor.addEventListener('click', async function (e) {
                     e.preventDefault();
                     const isAssFile = /\.ass(\.xz)?$/i.test(link);
                     try {
@@ -1274,7 +1275,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                             <html>
                             <head>
                                 <meta charset='utf-8'>
-                                <title>${fileName.replace(/\.xz$/i, '') } - ${text.replace(/</g, '&lt;')}</title>
+                                <title>${fileName.replace(/\.xz$/i, '')} - ${text.replace(/</g, '&lt;')}</title>
                                 <style>
                                     body {
                                         background-color: #121212;
@@ -1357,10 +1358,10 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                 <div style="display: flex; align-items: center; gap: 12px; width: 100%; border-bottom: 1px solid #333; padding-top: 8px; padding-bottom: 0px; position: sticky; top: 0; background: #121212; z-index: 10;">
                                     <div style="display: flex; flex-direction: column; flex: 1 1 0; min-width: 0;">
                                         <div class="nyat-filename" id="nyat-filename"></div>
-                                        <div class="nyat-tracktitle">${text.replace(/</g, '&lt;')}</div>
+                                        <div class="nyat-tracktitle">${text.replace(/</g, '&lt;')} | Size: ${decompressedText.length.toLocaleString()} characters</div>
                                     </div>
                                     <div class="button-bar" style="margin:0; flex-shrink: 0; display: flex; gap: 8px;">
-                                        ${isAssFile  ? `<button class="nyat-btn" id="toggle-highlight">Highlighting: OFF</button>` : ''}
+                                        ${isAssFile ? `<button class="nyat-btn" id="toggle-highlight">Highlighting: OFF</button>` : ''}
                                         <button class="nyat-btn" id="download-xz">Download</button>
                                         <button class="nyat-btn" id="download-extracted">Download Extracted</button>
                                         <input type="hidden" id="nyat-original-link" value="">
@@ -1368,10 +1369,13 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                 </div>
                                 ${isAssFile ? `<pre><code class="language-ass">${decompressedText.replace(/</g, '&lt;')}</code></pre>` : `<pre>${decompressedText.replace(/</g, '&lt;')}</pre>`}
                                 <script>
-                                // Set the original link and filename from the opener (if available)
+                                // Set the original link and filename from embedded data
                                 (function() {
                                     let originalBlob = null;
-                                    let fileName = '';
+                                    let fileName = '${fileName.replace(/'/g, "\\'")}';
+                                    let fileUrl = '${link.replace(/'/g, "\\'")}';
+
+                                    // Try to get data from opener as fallback
                                     try {
                                         if (window.opener && window.opener._nyat_subtitle_url) {
                                             fileUrl = window.opener._nyat_subtitle_url;
@@ -1381,16 +1385,16 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                             if (window.opener._nyat_subtitle_filename) {
                                                 fileName = window.opener._nyat_subtitle_filename;
                                             }
-                                        } else if (window.name && window.name.startsWith('nyat_subtitle:')) {
-                                            fileUrl = window.name.replace('nyat_subtitle:', '');
                                         }
                                     } catch {}
-                                    document.getElementById('nyat-original-link').value = fileUrl;
+
                                     // Set the filename in the title bar, removing .xz extension if present
-                                    let displayName = window._nyat_subtitle_filename.replace(/\.xz$/i, '');
+                                    let displayName = fileName.replace(/\.xz$/i, '') || 'subtitle';
                                     document.getElementById('nyat-filename').textContent = displayName;
+                                    document.getElementById('nyat-original-link').value = fileUrl;
                                     // Store the blob for download
                                     window._nyat_subtitle_blob = originalBlob;
+                                    window._nyat_subtitle_filename = fileName;
                                 })();
                                 // Download original .xz file
                                 document.getElementById('download-xz').onclick = async function() {
@@ -1409,7 +1413,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                     }
                                     const a = document.createElement('a');
                                     a.href = URL.createObjectURL(blob);
-                                    a.download = window._nyat_subtitle_filename;
+                                    a.download = window._nyat_subtitle_filename || 'subtitle.xz';
                                     document.body.appendChild(a);
                                     a.click();
                                     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
@@ -1418,7 +1422,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                 // Download extracted subtitle
                                 document.getElementById('download-extracted').onclick = function() {
                                     const fileUrl = document.getElementById('nyat-original-link').value;
-                                    let baseName = window._nyat_subtitle_filename.replace(/\.xz$/i, '');
+                                    let baseName = (window._nyat_subtitle_filename || 'subtitle').replace(/\.xz$/i, '');
                                     if (!baseName) baseName = 'subtitle';
                                     const blob = new Blob([document.querySelector('pre').innerText], {type: 'text/plain'});
                                     const a = document.createElement('a');
@@ -1437,10 +1441,10 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                     const code = document.querySelector('code.language-ass');
                                     if (btn && code) {
                                         const plainText = code.textContent;
-                                        console.log('Subtitle plainText length:', plainText.length.toLocaleString());
+                                        // console.log('Subtitle plainText length:', plainText.length.toLocaleString());
                                         let highlightedHtml = null;
                                         // Highlight by default if the subtitle is small enough
-                                        if (plainText.length <= 100000) {
+                                        if (plainText.length <= ${settings.highlighterCharCap}) {
                                             window.hljs.highlightElement(code);
                                             highlightedHtml = code.innerHTML;
                                             btn.textContent = 'Highlight: ON';
@@ -1448,7 +1452,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                         }
                                         btn.onclick = function() {
                                             if (!highlighted) {
-                                                if (plainText.length > 100000 && !highlightedHtml) {
+                                                if (plainText.length > ${settings.highlighterCharCap} && !highlightedHtml) {
                                                     if (!confirm('This file is large (' + plainText.length.toLocaleString() + ' characters) and highlighting may be slow or freeze your browser. Proceed anyway?')) {
                                                         return;
                                                     }
@@ -1476,23 +1480,24 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                             </body>
                             </html>
                         `;
-                        // Pass the original link and blob to the new tab for download (use window.name as fallback)
+                        // Pass the original link and blob to the new tab for download
                         const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
                         const url = URL.createObjectURL(blob);
-                        // Try to pass via window.opener, fallback to window.name
                         let win = window.open(url, '_blank');
                         if (win) {
-                            try { win._nyat_subtitle_url = link; } catch {}
-                            try { win._nyat_subtitle_blob = originalSubtitleBlob; } catch {}
-                            try { win._nyat_subtitle_filename = fileName; } catch {}
-                            try { win.name = 'nyat_subtitle:' + link; } catch {}
+                            // Try to pass via window.opener for other browsers
+                            try {
+                                win._nyat_subtitle_url = link;
+                                win._nyat_subtitle_blob = originalSubtitleBlob;
+                                win._nyat_subtitle_filename = fileName;
+                            } catch { }
                         }
                     } catch (err) {
                         alert('Failed to view subtitle: ' + err.message);
                     }
                 });
             } else if (settings.attachmentAction === 'download extracted' && !text.includes('All Attachments')) {
-                anchor.addEventListener('click', async function(e) {
+                anchor.addEventListener('click', async function (e) {
                     e.preventDefault();
                     try {
                         // Fetch the subtitle file as a stream
@@ -1509,7 +1514,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                         // Get the decompressed text
                         const decompressedText = await decompressedResponse.text();
                         // Download extracted subtitle
-                        let baseName = (function() {
+                        let baseName = (function () {
                             try {
                                 const u = new URL(link);
                                 let name = u.pathname.split('/').pop() || 'subtitle.xz';
@@ -1528,7 +1533,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                 return 'subtitle';
                             }
                         })();
-                        const blob = new Blob([decompressedText], {type: 'text/plain'});
+                        const blob = new Blob([decompressedText], { type: 'text/plain' });
                         const a = document.createElement('a');
                         a.href = URL.createObjectURL(blob);
                         a.download = baseName;
@@ -1906,6 +1911,8 @@ async function doSettings() {
             if (!el) return;
             if (key === "highlighterStyle") {
                 updatedSettings[key] = el.value.trim();
+            } else if (key === "highlighterCharCap") {
+                updatedSettings[key] = parseInt(el.value, 10) || 100000;
             } else if (typeof settings[key] === "boolean") {
                 updatedSettings[key] = el.checked;
             } else if (Array.isArray(settings[key])) {
@@ -2041,7 +2048,7 @@ async function doSettings() {
                     <option value="user dropdown" ${settings.settingsPosition === 'user dropdown' ? 'selected' : ''}>User dropdown</option>
                 </select></label>
                 ${Object.keys(settings)
-                .filter(key => !['nzb', 'sabUrl', 'nzbKey', 'screenshots', 'previewSize', 'subsByDefault', 'attachments', 'filtersByDefault', 'languageFilters', 'settingsPosition', 'attachmentAction', 'highlighterStyle'].includes(key))
+                .filter(key => ['anidb', 'myanimelist', 'anilist', 'animetosho', 'fileinfo'].includes(key))
                 .map(key => {
                     let inputHtml = '';
                     if (typeof settings[key] === "boolean") {
@@ -2094,6 +2101,7 @@ async function doSettings() {
                     <option value="download extracted" ${settings.attachmentAction === 'download extracted' ? 'selected' : ''}>Download Extracted</option>
                 </select></label>
                 <label id="setting-highlighterStyle-row" style="${settings.attachments !== 'no' && settings.attachmentAction === 'view' ? '' : 'display:none;'}"><span>highlighterStyle:</span><textarea id="setting-highlighterStyle" rows="1" style="resize: none; overflow: hidden; min-height: 30px; max-height: 30px; white-space: nowrap;">${settings.highlighterStyle}</textarea></label>
+                <label id="setting-highlighterCharCap-row" style="${settings.attachments !== 'no' && settings.attachmentAction === 'view' ? '' : 'display:none;'}"><span>highlighterCharCap:</span><input type="number" id="setting-highlighterCharCap" value="${settings.highlighterCharCap}" min="0" step="10000" style="width: 160px; box-sizing: border-box; color: #333; padding: 5px; border: 1px solid #ccc; border-radius: 5px; font-family: inherit; font-size: inherit; background-color: #fff; margin: 0;"></label>
                 <label id="setting-languageFilters-row" style="${settings.attachments !== 'no' ? '' : 'display:none;'}"><span>languageFilters:</span><textarea id="setting-languageFilters" rows="1" style="resize: none; overflow: hidden; max-height: 60px;">${Array.isArray(settings.languageFilters) ? settings.languageFilters.join(",") : settings.languageFilters}</textarea></label>
                 <hr style="border: 0; border-top: 1px solid #555; margin: 15px 0;">
                 </div>
@@ -2144,6 +2152,7 @@ async function doSettings() {
             settingsUI.querySelector('#setting-attachmentAction-row').style.display = show ? '' : 'none';
             const attachmentAction = settingsUI.querySelector('#setting-attachmentAction').value;
             settingsUI.querySelector('#setting-highlighterStyle-row').style.display = show && attachmentAction === 'view' ? '' : 'none';
+            settingsUI.querySelector('#setting-highlighterCharCap-row').style.display = show && attachmentAction === 'view' ? '' : 'none';
             settingsUI.querySelector('#setting-languageFilters-row').style.display = show ? '' : 'none';
             // Auto-expand the languageFilters textarea if shown
             if (show) {
@@ -2157,6 +2166,7 @@ async function doSettings() {
         settingsUI.querySelector('#setting-attachmentAction').addEventListener('change', function () {
             const show = settingsUI.querySelector('#setting-attachments').value !== 'no' && this.value === 'view';
             settingsUI.querySelector('#setting-highlighterStyle-row').style.display = show ? '' : 'none';
+            settingsUI.querySelector('#setting-highlighterCharCap-row').style.display = show ? '' : 'none';
         });
 
         // Append settings UI to the body
