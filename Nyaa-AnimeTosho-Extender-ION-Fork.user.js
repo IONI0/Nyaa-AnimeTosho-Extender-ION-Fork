@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-19
+// @version      0.61-20
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -201,8 +201,8 @@ function extractScreenshotsFromHtml(html) {
             let linkMatch;
             while ((linkMatch = linkRegex.exec(match[1])) !== null) {
                 // Convert the URL to the storage URL format and preserve track flags
-                const storageUrl = linkMatch[1].replace(/.*\/sframes\//, 'https://storage.animetosho.org/sframes/');
-                const thumbnailUrl = linkMatch[3].replace(/.*\/sframes\//, 'https://storage.animetosho.org/sframes/');
+                const storageUrl = linkMatch[1].replace(/.*\/sframes\//, 'https://storage.animetosho.org/sframes/').replace(/&amp;/g, '&');
+                const thumbnailUrl = linkMatch[3].replace(/.*\/sframes\//, 'https://storage.animetosho.org/sframes/').replace(/&amp;/g, '&');
 
                 // Extract track flag from the original URL
                 const trackMatch = linkMatch[1].match(/s=(\d+)/);
@@ -275,6 +275,20 @@ function parseSubtitleTracksFromFileinfo(fileinfoText) {
 
     // Only return tracks with a valid id
     return tracks.filter(t => t.id !== null);
+}
+
+function getImageUrl(url, trackNum) {
+    let imgUrlObj = new URL(url);
+    try {
+        if (trackNum) {
+            imgUrlObj.searchParams.set('s', trackNum);
+        } else {
+            imgUrlObj.searchParams.delete('s');
+        }
+    } catch (error) {
+        console.log(error);
+    }
+    return imgUrlObj.toString();
 }
 
 function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, trackName) {
@@ -514,19 +528,6 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
         transition: opacity 0.3s ease;
     `;
 
-    // Create loading indicator
-    const loadingIndicator = document.createElement('div');
-    loadingIndicator.style.cssText = `
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: white;
-        font-size: 18px;
-        z-index: 10001;
-    `;
-    loadingIndicator.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Loading...';
-
     // Image preloading cache
     const imageCache = new Map();
 
@@ -618,8 +619,7 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
     // Function to update the modal content
     function updateModal() {
         const screenshot = screenshots[currentIndex];
-        const baseUrl = screenshot.url.split('?')[0];
-        const fullUrl = trackNum ? `${baseUrl}?s=${trackNum}` : baseUrl;
+        const fullUrl = getImageUrl(screenshot.url, trackNum);
 
         // Update titles
         episodeTitleElement.textContent = episodeTitle;
@@ -638,7 +638,6 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
         modalImage.fetchpriority = 'high';
         modalImage.src = fullUrl;
         modalImage.style.opacity = '1';
-        loadingIndicator.style.display = 'none';
 
         // Only start preloading after current image is fully loaded
         modalImage.onload = () => {
@@ -647,8 +646,8 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
             const nextIndex = currentIndex === screenshots.length - 1 ? 0 : currentIndex + 1;
 
             if (screenshots.length > 1) {
-                const prevUrl = trackNum ? `${screenshots[prevIndex].url.split('?')[0]}?s=${trackNum}` : screenshots[prevIndex].url.split('?')[0];
-                const nextUrl = trackNum ? `${screenshots[nextIndex].url.split('?')[0]}?s=${trackNum}` : screenshots[nextIndex].url.split('?')[0];
+                const prevUrl = getImageUrl(screenshots[prevIndex].url, trackNum);
+                const nextUrl = getImageUrl(screenshots[nextIndex].url, trackNum);
 
                 // Preload silently
                 preloadImage(prevUrl).catch(() => { });
@@ -810,7 +809,6 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
     topBar.appendChild(titleElement);
     topBar.appendChild(buttonContainer);
 
-    imageContainer.appendChild(loadingIndicator);
     imageContainer.appendChild(modalImage);
 
     modalContent.appendChild(imageContainer);
@@ -975,10 +973,8 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
 
             const img = document.createElement("img");
             // Get the base URL without parameters
-            const baseUrl = thumbnail.split('?')[0];
-            const fullBaseUrl = url.split('?')[0];
             // Only add track parameter if a track is selected
-            img.src = trackNum ? `${baseUrl}?s=${trackNum}` : baseUrl;
+            img.src = getImageUrl(url.replace('.png', '.jpg'), trackNum);
             img.style.position = "absolute";
             img.style.top = "0";
             img.style.left = "0";

@@ -42,7 +42,7 @@ User script that extends Nyaa view page with AnimeTosho information. Original sc
 - Screenshots previews are loaded as jpgs, click in to see full png
 - SRT subtitles and maybe other formats are not included in the screenshot on AnimeTosho
 - For batch releases, Attachments will show All Attachments for everything and the individual tracks for the first episode only
-- ASS syntax highlighting is automatically enabled only for sub files with under 100,000 characters by default. Change the highlighterCharCap option in settings to change this number.
+- ASS syntax highlighting is automatically enabled only for sub files with under 100,000 characters by default. Change the highlighterCharCap option in settings to change this number
 - You can also choose your own highlighter js styles. Try selecting from here https://highlightjs.org/examples
 - Subtitle contenting viewing and extracting only works for individual subtitle tracks not `All Attachments`
 
