@@ -12,7 +12,7 @@ User script that extends Nyaa view page with AnimeTosho information. Original sc
 - (New) Screenshots with a dropdown to select which subtitle track is present in the screenshots
 - (New) Full-sized screenshot viewer
 - (New) Attachments download options for all tracks with language filters, option to download extracted
-- (New) View subtitle content in new tab in one click with ASS syntax highlighting
+- (New) View subtitle content in new tab in one click with ASS & SRT syntax highlighting
 - (New) Collapsible headings for everything
 
 ### Installation

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-20
+// @version      0.61-21
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -1247,6 +1247,8 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                 anchor.addEventListener('click', async function (e) {
                     e.preventDefault();
                     const isAssFile = /\.ass(\.xz)?$/i.test(link);
+                    const isSrtFile = /\.srt(\.xz)?$/i.test(link);
+                    const isHighlightableFile = isAssFile || isSrtFile;
                     try {
                         // Fetch the subtitle file as a stream
                         const response = await fetch(link);
@@ -1344,10 +1346,68 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                         margin: -1em !important;
                                     }
                                 </style>
-                                ${isAssFile ? `
+                                ${isHighlightableFile ? `
                                 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.11.1/styles/${settings.highlighterStyle}.css">
                                 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.11.1/build/highlight.min.js"></script>
-                                <script src="https://cdn.jsdelivr.net/npm/highlightjs-ass@1.0.1/dist/ass.min.js"></script>
+                                ${isAssFile ? `<script src="https://cdn.jsdelivr.net/npm/highlightjs-ass@1/dist/ass.min.js"></script>` : ''}
+                                ${isSrtFile ? `
+                                <script>
+                                // Custom SRT syntax highlighting
+                                (function() {
+                                    hljs.registerLanguage('srt', function(hljs) {
+                                        return {
+                                            name: 'srt',
+                                            case_insensitive: false,
+                                            contains: [
+                                                { // Line info
+                                                    begin: [/^\\d+\\n/,
+                                                            /^\\d{2}:\\d{2}:\\d{2},\\d{3}/,
+                                                            /\\s*-->\\s*/,
+                                                            /\\d{2}:\\d{2}:\\d{2},\\d{3}/],
+                                                    scope: { 1: 'built_in', // Line number
+                                                            2: 'literal', // Start time
+                                                            3: 'comment', // -->
+                                                            4: 'title.class' }, // End time
+                                                },
+                                                { // Tags like <i> <u> <b>
+                                                    begin: [/</,
+                                                            /\\/?(i|b|u)/,
+                                                            />/],
+                                                    scope: { 1: 'comment', // Open bracket <
+                                                            2: 'title.function.invoke', // Tag name
+                                                            3: 'comment' }, // Close bracket >
+                                                },
+                                                { // Font tags like <font color="red"> or <font color="#FF0000">
+                                                    begin: [/</,
+                                                            /font/,
+                                                            /\\s+color\\s*=\\s*["']/,
+                                                            /[^"']+/,
+                                                            /["']/,
+                                                            />/],
+                                                    scope: { 1: 'comment', // Open bracket <
+                                                            2: 'title.function.invoke', // Tag name
+                                                            3: 'title.function.invoke', // color=
+                                                            4: 'string', // Color value
+                                                            5: 'title.function.invoke', // Closing quote
+                                                            6: 'comment' }, // Close bracket >
+                                                },
+                                                { // Tags like {\an8}
+                                                    begin: ['{',
+                                                            /\\\\(a|an)/,
+                                                            /\\d+/,
+                                                            '}'],
+                                                    scope: { 1: 'comment', // Open bracket {
+                                                            2: 'title.function.invoke', // Tag name
+                                                            3: 'params', // Tag parameter number
+                                                            4: 'comment' }, // Close bracket }
+                                                },
+                                            ]
+                                        };
+                                    });
+                                })();
+                                </script>
+
+                                ` : ''}
                                 ` : ''}
                             </head>
                             <body>
@@ -1357,13 +1417,13 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                         <div class="nyat-tracktitle">${text.replace(/</g, '&lt;')} | Size: ${decompressedText.length.toLocaleString()} characters</div>
                                     </div>
                                     <div class="button-bar" style="margin:0; flex-shrink: 0; display: flex; gap: 8px;">
-                                        ${isAssFile ? `<button class="nyat-btn" id="toggle-highlight">Highlighting: OFF</button>` : ''}
+                                        ${isHighlightableFile ? `<button class="nyat-btn" id="toggle-highlight">Highlighting: OFF</button>` : ''}
                                         <button class="nyat-btn" id="download-xz">Download</button>
                                         <button class="nyat-btn" id="download-extracted">Download Extracted</button>
                                         <input type="hidden" id="nyat-original-link" value="">
                                     </div>
                                 </div>
-                                ${isAssFile ? `<pre><code class="language-ass">${decompressedText.replace(/</g, '&lt;')}</code></pre>` : `<pre>${decompressedText.replace(/</g, '&lt;')}</pre>`}
+                                ${isHighlightableFile ? `<pre><code class="${isAssFile ? 'language-ass' : 'language-srt'}">${decompressedText.replace(/</g, '&lt;')}</code></pre>` : `<pre>${decompressedText.replace(/</g, '&lt;')}</pre>`}
                                 <script>
                                 // Set the original link and filename from embedded data
                                 (function() {
@@ -1429,12 +1489,12 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
                                     document.body.removeChild(a);
                                 };
-                                // Highlight ASS if needed
-                                ${isAssFile ? `
+                                // Highlight subtitle files if needed
+                                ${isHighlightableFile ? `
                                 (function() {
                                     let highlighted = false;
                                     const btn = document.getElementById('toggle-highlight');
-                                    const code = document.querySelector('code.language-ass');
+                                    const code = document.querySelector('code');
                                     if (btn && code) {
                                         const plainText = code.textContent;
                                         // console.log('Subtitle plainText length:', plainText.length.toLocaleString());
@@ -2090,7 +2150,6 @@ async function doSettings() {
                         <option value="hide" ${settings.attachments === "hide" ? "selected" : ""}>Hide</option>
                         <option value="show" ${settings.attachments === "show" ? "selected" : ""}>Show</option>
                     </select></label>
-                <label id="setting-filtersByDefault-row" style="${settings.attachments !== 'no' ? '' : 'display:none;'}"><span>filtersByDefault:</span><input type="checkbox" id="setting-filtersByDefault" ${settings.filtersByDefault ? "checked" : ""} style="transform: scale(1.2);"></label>
                 <label id="setting-attachmentAction-row" style="${settings.attachments !== 'no' ? '' : 'display:none;'}"><span>attachmentAction</span><select id="setting-attachmentAction">
                     <option value="view" ${settings.attachmentAction === 'view' ? 'selected' : ''}>View</option>
                     <option value="download" ${settings.attachmentAction === 'download' ? 'selected' : ''}>Download</option>
@@ -2098,6 +2157,7 @@ async function doSettings() {
                 </select></label>
                 <label id="setting-highlighterStyle-row" style="${settings.attachments !== 'no' && settings.attachmentAction === 'view' ? '' : 'display:none;'}"><span>highlighterStyle:</span><textarea id="setting-highlighterStyle" rows="1" style="resize: none; overflow: hidden; min-height: 30px; max-height: 30px; white-space: nowrap;">${settings.highlighterStyle}</textarea></label>
                 <label id="setting-highlighterCharCap-row" style="${settings.attachments !== 'no' && settings.attachmentAction === 'view' ? '' : 'display:none;'}"><span>highlighterCharCap:</span><input type="number" id="setting-highlighterCharCap" value="${settings.highlighterCharCap}" min="0" step="10000" style="width: 160px; box-sizing: border-box; color: #333; padding: 5px; border: 1px solid #ccc; border-radius: 5px; font-family: inherit; font-size: inherit; background-color: #fff; margin: 0;"></label>
+                <label id="setting-filtersByDefault-row" style="${settings.attachments !== 'no' ? '' : 'display:none;'}"><span>filtersByDefault:</span><input type="checkbox" id="setting-filtersByDefault" ${settings.filtersByDefault ? "checked" : ""} style="transform: scale(1.2);"></label>
                 <label id="setting-languageFilters-row" style="${settings.attachments !== 'no' ? '' : 'display:none;'}"><span>languageFilters:</span><textarea id="setting-languageFilters" rows="1" style="resize: none; overflow: hidden; max-height: 60px;">${Array.isArray(settings.languageFilters) ? settings.languageFilters.join(",") : settings.languageFilters}</textarea></label>
                 <hr style="border: 0; border-top: 1px solid #555; margin: 15px 0;">
                 </div>
