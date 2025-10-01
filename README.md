@@ -41,7 +41,8 @@ User script that extends Nyaa view page with AnimeTosho information. Original sc
 - sabUrl and NZB key are optional settings if you have them
 - Screenshots previews are loaded as jpgs, click in to see full png
 - SRT subtitles and maybe other formats are not included in the screenshot on AnimeTosho
-- For batch releases, Attachments will show All Attachments for everything and the individual tracks for the first episode only
+- For batch releases, click on other episodes in file list to change the data source for everything. Look for the tick next to the file icon
+- For batch releases, Attachments will show All Attachments for everything and the individual tracks for the selected episode
 - ASS syntax highlighting is automatically enabled only for sub files with under 100,000 characters by default. Change the highlighterCharCap option in settings to change this number
 - You can also choose your own highlighter js styles. Try selecting from here https://highlightjs.org/examples
 - Subtitle contenting viewing and extracting only works for individual subtitle tracks not `All Attachments`
@@ -51,6 +52,7 @@ User script that extends Nyaa view page with AnimeTosho information. Original sc
 ### Acknowledgements
 - AI was heavily used for this project since I do not know js/html. Apologies for code quality but I will try my best to fix any issues
 - [animeApi](https://github.com/nattadasu/animeApi) for linking AniDB with other anime services
+- [PlexAniBride-Mappings](https://github.com/eliasbenb/PlexAniBridge-Mappings) for linking AniDB with other anime services
 - [xz-decompress](https://github.com/httptoolkit/xz-decompress) for decompressing xz when downloading subtitle tracks
 - [highlight.js](https://github.com/highlightjs/highlight.js) for syntax highlighting
 - [highlightjs-ass](https://github.com/GrygrFlzr/highlightjs-ass/) for ASS syntax highlighting plugin

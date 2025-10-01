@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-21
+// @version      0.61-22
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -42,7 +42,6 @@ const defaultSettings = {
 }
 
 let settings = {}
-
 
 function fetchUrl(url, timeout = 10000) {
     return new Promise((resolve, reject) => {
@@ -86,42 +85,6 @@ function subscribeToThemeChange(callback) {
             callback();
         }
     });
-}
-
-function extractSubtitlesFromHtml(html) {
-    try {
-        // Parse the HTML using DOMParser
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, "text/html");
-
-        const subtitles = [];
-        // Regex to locate the Subtitles section
-        const subtitlesRegex = /<th>Extractions<\/th>.*?Subtitles: (.*?)<\/td>/s;
-        const alternativeRegex = /<th>Subtitles<\/th>.*?<td>(.*?)<\/td>/s;
-        let match = html.match(subtitlesRegex);
-        if (!match) {
-            match = html.match(alternativeRegex);
-        }
-
-        if (match && match[1]) {
-            const subtitlesHtml = match[1];
-
-            // Extract all links and their text
-            const linksRegex = /<a href="([^"]+)">([^<]+)<\/a>/g;
-            let linkMatch;
-            while ((linkMatch = linksRegex.exec(subtitlesHtml)) !== null) {
-                subtitles.push({
-                    text: parser.parseFromString(linkMatch[2].trim(), "text/html").documentElement.textContent,
-                    link: linkMatch[1].trim(),
-                });
-            }
-        }
-
-        return subtitles;
-    } catch (error) {
-        console.error("Error parsing subtitles:", error);
-        return [];
-    }
 }
 
 function makePanelCollapsible(panel, startCollapsed = false) {
@@ -188,6 +151,42 @@ function makePanelCollapsible(panel, startCollapsed = false) {
     });
 }
 
+function extractSubtitlesFromHtml(html) {
+    try {
+        // Parse the HTML using DOMParser
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, "text/html");
+
+        const subtitles = [];
+        // Regex to locate the Subtitles section
+        const subtitlesRegex = /<th>Extractions<\/th>.*?Subtitles: (.*?)<\/td>/s;
+        const alternativeRegex = /<th>Subtitles<\/th>.*?<td>(.*?)<\/td>/s;
+        let match = html.match(subtitlesRegex);
+        if (!match) {
+            match = html.match(alternativeRegex);
+        }
+
+        if (match && match[1]) {
+            const subtitlesHtml = match[1];
+
+            // Extract all links and their text
+            const linksRegex = /<a href="([^"]+)">([^<]+)<\/a>/g;
+            let linkMatch;
+            while ((linkMatch = linksRegex.exec(subtitlesHtml)) !== null) {
+                subtitles.push({
+                    text: parser.parseFromString(linkMatch[2].trim(), "text/html").documentElement.textContent,
+                    link: linkMatch[1].trim(),
+                });
+            }
+        }
+
+        return subtitles;
+    } catch (error) {
+        console.error("Error parsing subtitles:", error);
+        return [];
+    }
+}
+
 function extractScreenshotsFromHtml(html) {
     try {
         // Find the screenshots section using regex
@@ -224,7 +223,6 @@ function extractScreenshotsFromHtml(html) {
     }
 }
 
-// Extract fileinfo (mediainfo) from HTML by id
 function extractFileinfoFromHtml(html) {
     try {
         const parser = new DOMParser();
@@ -829,6 +827,27 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
 
 function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
     if (!screenshots.length || settings.screenshots === "no") return;
+    // Remove existing attachments panel if it exists
+    const allPanels = document.querySelectorAll('.panel.panel-default');
+    let refreshPanel = false;
+    let wasCollapsed = false;
+    let savedTrackSelection = null;
+    allPanels.forEach(panel => {
+        const title = panel.querySelector('.panel-title');
+        if (title && title.textContent.includes('Screenshots')) {
+            // Save the current track selection before removing
+            const trackSelector = panel.querySelector('select');
+            if (trackSelector) {
+                savedTrackSelection = trackSelector.value;
+            }
+            panel.remove();
+            refreshPanel = true;
+            const body = panel.querySelector('.panel-body');
+            if (body.style.display === 'none') {
+                wasCollapsed = true;
+            }
+        }
+    });
 
     // Create screenshots panel
     const screenshotsPanel = document.createElement("div");
@@ -1029,7 +1048,16 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
 
     // Set initial track selection based on screenshotSubs setting
     let initialTrackIndex = 0;
-    if (settings.subsByDefault === "first-nonforced") {
+
+    // If refreshing and we have a saved track selection, use it
+    if (refreshPanel && savedTrackSelection !== null) {
+        for (let i = 0; i < trackSelector.options.length; i++) {
+            if (trackSelector.options[i].value === savedTrackSelection) {
+                initialTrackIndex = i;
+                break;
+            }
+        }
+    } else if (settings.subsByDefault === "first-nonforced") {
         if (fileInfo) {
             const tracks = parseSubtitleTracksFromFileinfo(fileInfo);
             // console.log(fileInfo)
@@ -1088,8 +1116,11 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle) {
     screenshotsPanel.appendChild(body);
 
     // Make the panel collapsible, start collapsed if setting is "hide"
-    makePanelCollapsible(screenshotsPanel, settings.screenshots === "hide");
-
+    if (refreshPanel) {
+        makePanelCollapsible(screenshotsPanel, wasCollapsed);
+    } else {
+        makePanelCollapsible(screenshotsPanel, settings.screenshots === "hide");
+    }
     // Insert screenshots panel after the torrent-description panel
     const torrentDescription = document.querySelector("#torrent-description");
     if (torrentDescription) {
@@ -1131,6 +1162,22 @@ function getFileNameFromUrl(url) {
 }
 
 function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
+    // Remove existing attachments panel if it exists
+    const allPanels = document.querySelectorAll('.panel.panel-default');
+    let refreshPanel = false;
+    let wasCollapsed = false;
+    allPanels.forEach(panel => {
+        const title = panel.querySelector('.panel-title');
+        if (title && title.textContent.includes('Attachments')) {
+            panel.remove();
+            refreshPanel = true;
+            const body = panel.querySelector('.panel-body');
+            if (body.style.display === 'none') {
+                wasCollapsed = true;
+            }
+        }
+    });
+
     const fileListPanel = document.querySelector(".panel.panel-default > .torrent-file-list.panel-body");
     if (!fileListPanel) {
         console.error("File list panel-body element not found.");
@@ -1163,10 +1210,12 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
     title.style.fontWeight = "500";
 
     // Use a local variable for filter state
-    let isFiltered = isFilteredInit;
+    if (!refreshPanel) {
+        window.isFiltered = isFilteredInit;
+    }
 
     const toggleButton = document.createElement("button");
-    toggleButton.textContent = isFiltered ? "Filter ON" : "Filter OFF";
+    toggleButton.textContent = window.isFiltered ? "Filter ON" : "Filter OFF";
     toggleButton.className = "btn btn-sm";
     toggleButton.style.marginLeft = "10px";
     toggleButton.style.padding = "2px 6px";
@@ -1191,7 +1240,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                 hover: { bg: isDarkMode() ? "#5a6268" : "#f2f2f2", border: isDarkMode() ? "#545b62" : "#bbb", color: isDarkMode() ? "#fff" : "#333" }
             }
         };
-        const scheme = isFiltered ? colorSchemes.success : colorSchemes.secondary;
+        const scheme = window.isFiltered ? colorSchemes.success : colorSchemes.secondary;
         const colors = isHovered ? scheme.hover : scheme.normal;
         toggleButton.style.color = colors.color;
         toggleButton.style.backgroundColor = colors.bg;
@@ -1225,9 +1274,9 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
 
     // Function to update the filtered subtitles list display
     function updateFilter() {
-        toggleButton.textContent = isFiltered ? "Filter ON" : "Filter OFF";
+        toggleButton.textContent = window.isFiltered ? "Filter ON" : "Filter OFF";
         updateButtonStyle();
-        const filteredSubtitles = isFiltered
+        const filteredSubtitles = window.isFiltered
             ? subtitles.filter(subtitle =>
                 settings.languageFilters.some(filter =>
                     subtitle.text.includes(`${filter} [`)
@@ -1243,32 +1292,37 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
             anchor.textContent = text;
             anchor.target = "_blank";
             // Custom action for subtitle attachments if actionByDefault is 'view' and not 'All Attachments'
-            if (settings.attachmentAction === 'view' && !text.includes('All Attachments')) {
-                anchor.addEventListener('click', async function (e) {
-                    e.preventDefault();
-                    const isAssFile = /\.ass(\.xz)?$/i.test(link);
-                    const isSrtFile = /\.srt(\.xz)?$/i.test(link);
-                    const isHighlightableFile = isAssFile || isSrtFile;
-                    try {
-                        // Fetch the subtitle file as a stream
-                        const response = await fetch(link);
-                        if (!response.ok) throw new Error('Failed to fetch subtitle');
-                        const responseClone = response.clone();
-                        // Decompress using xz-decompress streaming API
-                        const XzReadableStream = window['xz-decompress']?.XzReadableStream;
-                        if (!XzReadableStream) throw new Error('XZ decompressor not found');
-                        // Create XZ decompression stream directly from the response body
-                        const decompressedStream = new XzReadableStream(response.body);
-                        // Create a Response object to easily get the text
-                        const decompressedResponse = new Response(decompressedStream);
-                        // Get the decompressed text
-                        const decompressedText = await decompressedResponse.text();
-                        // Store the original response blob for reuse
-                        const originalSubtitleBlob = await responseClone.blob();
-                        // Get the filename from the URL
-                        const fileName = getFileNameFromUrl(link).replace(/</g, '&lt;');
-                        // Open in new tab
-                        const htmlContent = `
+            async function onViewClick(e) {
+                const isAssFile = /\.ass(\.xz)?$/i.test(link);
+                const isSrtFile = /\.srt(\.xz)?$/i.test(link);
+                const isPgsFile = /\.sup(\.xz)?$/i.test(link);
+                const isHighlightableFile = isAssFile || isSrtFile;
+
+                // Detect if this is a middle click or ctrl+click (open in new tab without focus)
+                const isMiddleClick = e.button === 1;
+                const isCtrlClick = e.ctrlKey || e.metaKey;
+                const shouldOpenWithoutFocus = isMiddleClick || isCtrlClick;
+
+                try {
+                    // Fetch the subtitle file as a stream
+                    const response = await fetch(link);
+                    if (!response.ok) throw new Error('Failed to fetch subtitle');
+                    const responseClone = response.clone();
+                    // Decompress using xz-decompress streaming API
+                    const XzReadableStream = window['xz-decompress']?.XzReadableStream;
+                    if (!XzReadableStream) throw new Error('XZ decompressor not found');
+                    // Create XZ decompression stream directly from the response body
+                    const decompressedStream = new XzReadableStream(response.body);
+                    // Create a Response object to easily get the text
+                    const decompressedResponse = new Response(decompressedStream);
+                    // Get the decompressed text
+                    const decompressedText = await decompressedResponse.text();
+                    // Store the original response blob for reuse
+                    const originalSubtitleBlob = await responseClone.blob();
+                    // Get the filename from the URL
+                    const fileName = getFileNameFromUrl(link).replace(/</g, '&lt;');
+                    // Open in new tab
+                    const htmlContent = `
                             <!DOCTYPE html>
                             <html>
                             <head>
@@ -1423,7 +1477,8 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                         <input type="hidden" id="nyat-original-link" value="">
                                     </div>
                                 </div>
-                                ${isHighlightableFile ? `<pre><code class="${isAssFile ? 'language-ass' : 'language-srt'}">${decompressedText.replace(/</g, '&lt;')}</code></pre>` : `<pre>${decompressedText.replace(/</g, '&lt;')}</pre>`}
+                                ${isPgsFile ? `<pre>No preview available for PGS files</pre>` :
+                            isHighlightableFile ? `<pre><code class="${isAssFile ? 'language-ass' : 'language-srt'}">${decompressedText.replace(/</g, '&lt;')}</code></pre>` : `<pre>${decompressedText.replace(/</g, '&lt;')}</pre>`}
                                 <script>
                                 // Set the original link and filename from embedded data
                                 (function() {
@@ -1536,10 +1591,21 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                             </body>
                             </html>
                         `;
-                        // Pass the original link and blob to the new tab for download
-                        const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-                        const url = URL.createObjectURL(blob);
-                        let win = window.open(url, '_blank');
+                    // Pass the original link and blob to the new tab for download
+                    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    if (shouldOpenWithoutFocus) {
+                        const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+                        if (isFirefox) {
+                            let win = window.open(url, '_blank', 'noopener,noreferrer');
+                        } else {
+                            try {
+                                GM_openInTab(url, { active: false });
+                            } catch (err) { }
+                        }
+
+                    } else {
+                        let win = window.open(url, '_blank')
                         if (win) {
                             // Try to pass via window.opener for other browsers
                             try {
@@ -1548,9 +1614,22 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
                                 win._nyat_subtitle_filename = fileName;
                             } catch { }
                         }
-                    } catch (err) {
-                        alert('Failed to view subtitle: ' + err.message);
                     }
+                } catch (err) {
+                    alert('Failed to view subtitle: ' + err.message);
+                }
+            }
+            if (settings.attachmentAction === 'view' && !text.includes('All Attachments')) {
+                anchor.addEventListener('click', async function (e) {
+                    e.preventDefault();
+                    onViewClick(e);
+
+                });
+                // Support middle-click via auxclick to open without focusing
+                anchor.addEventListener('auxclick', async function (e) {
+                    if (e.button !== 1) return; // only handle middle-click
+                    e.preventDefault();
+                    onViewClick(e);
                 });
             } else if (settings.attachmentAction === 'download extracted' && !text.includes('All Attachments')) {
                 anchor.addEventListener('click', async function (e) {
@@ -1617,7 +1696,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
 
     toggleButton.addEventListener("click", (e) => {
         e.stopPropagation(); // Prevent the click from bubbling up to the header
-        isFiltered = !isFiltered;
+        window.isFiltered = !window.isFiltered;
         updateFilter();
     });
 
@@ -1642,7 +1721,11 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
     panel.parentNode.insertBefore(attachmentsPanel, panel);
 
     // Make attachments panel collapsible
-    makePanelCollapsible(attachmentsPanel, settings.attachments === "hide");
+    if (refreshPanel) {
+        makePanelCollapsible(attachmentsPanel, wasCollapsed);
+    } else {
+        makePanelCollapsible(attachmentsPanel, settings.attachments === "hide");
+    }
 
     // **Call updateFilter once here to respect filtersByDefault on initial load**
     updateFilter();
@@ -1683,21 +1766,87 @@ async function doFeatures() {
             toshoViewPageUrl += `${tosho.tosho_id}`;
     }
 
-    let firstEpId = null;
-    let firstEpFilename = null; // Without folder name
+    let selectedEpId = null;
+    let selectedEpFilename = null; // Without folder name
     let countVidFiles = 0;
     if (tosho.files) {
         for (const file of tosho.files) {
             const filename = file.filename.toLowerCase();
             if (!filename.endsWith(".mkv") && !filename.endsWith(".mp4") && !filename.endsWith(".ts")) continue;
             if ((filename.startsWith("extra") || filename.startsWith("bonus") || filename.startsWith("special") || filename.startsWith("creditless")) && filename.includes("/")) continue;
-            if (!firstEpId && !firstEpFilename) {
-                firstEpId = file.id;
-                firstEpFilename = file.filename.split("/").pop();
+            if (!selectedEpId && !selectedEpFilename) {
+                selectedEpId = file.id;
+                selectedEpFilename = file.filename.split("/").pop();
             }
             countVidFiles++;
         }
     }
+
+    function makeFileListClickable(countVidFiles, selectedEpId, tosho) {
+        if (countVidFiles <= 1) return;
+        if (!tosho.files) return;
+
+        // Index DOM list items by extracted filename
+        const fileListItems = Array.from(document.querySelectorAll('ul li'));
+        const filenameToItem = new Map();
+        fileListItems.forEach(item => {
+            const icon = item.querySelector('i.fa-file');
+            if (!icon) return;
+            const itemText = item.textContent.trim();
+            const fileSizeSpan = item.querySelector('span.file-size');
+            let extracted = itemText;
+            if (fileSizeSpan) {
+                extracted = itemText.replace(fileSizeSpan.textContent, '').trim();
+            }
+            filenameToItem.set(extracted, item);
+        });
+
+        // Single pass over files to attach handlers
+        for (const file of tosho.files) {
+            const filename = file.filename.split('/').pop();
+            const fileExtension = filename.toLowerCase().split('.').pop();
+            if (!['mkv', 'mp4', 'ts'].includes(fileExtension)) continue;
+
+            const item = filenameToItem.get(filename);
+            if (!item) continue;
+
+            // Make the item clickable
+            item.style.cursor = 'pointer';
+            // Add file ID as data attribute
+            item.setAttribute('data-file-id', file.id);
+            item.setAttribute('data-filename', filename);
+
+            // Mark default selected
+            if (file.id === selectedEpId) {
+                const fileIcon = item.querySelector('i.fa-file');
+                if (fileIcon) fileIcon.className = 'fa fa-file-circle-check';
+            }
+
+            item.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const fileId = item.getAttribute('data-file-id');
+                const nameFromAttr = item.getAttribute('data-filename');
+
+                // Update the current file info with this file's data
+                doDynamicEpisodeFunctions(fileId, nameFromAttr, countVidFiles);
+
+                // Reset all icons
+                fileListItems.forEach(li => {
+                    const icon = li.querySelector('i.fa-file, i.fa-file-circle-check');
+                    if (icon) icon.className = 'fa fa-file';
+                    li.style.backgroundColor = '';
+                });
+
+                // Highlight selected
+                const fileIcon = item.querySelector('i.fa-file');
+                if (fileIcon) fileIcon.className = 'fa fa-file-circle-check';
+            });
+        }
+    }
+
+
 
     // Anidb
     if (tosho.anidb_aid && settings.anidb) {
@@ -1717,6 +1866,29 @@ async function doFeatures() {
         parent?.appendChild(anidb);
     }
 
+    // Function to fetch AniDB data from different APIs
+    async function fetchAnidbLinkMap(anidbAid, anidbConnectingAPI) {
+        let out_response = null;
+        if (anidbConnectingAPI == 'plexanibridge') {
+            out_response = await fetchUrl(`https://plexanibridge-api.elias.eu.org/api/v2/search?anidb_id=${anidbAid}`);
+        } else if (anidbConnectingAPI == 'animeapi') {
+            out_response = await fetchUrl(`https://animeapi.my.id/anidb/${anidbAid}`);
+        }
+
+        const linkMap = {};
+        if (anidbConnectingAPI == 'plexanibridge') {
+            linkMap.mal = `https://myanimelist.net/anime/${out_response.results[0].mal_id}`;
+            linkMap.anilist = `https://anilist.co/anime/${out_response.results[0].anilist_id}`;
+        } else if (anidbConnectingAPI == 'animeapi') {
+            linkMap.mal = `https://myanimelist.net/anime/${out_response.myanimelist}`;
+            linkMap.anilist = `https://anilist.co/anime/${out_response.anilist}`;
+        }
+
+        return linkMap;
+    }
+
+    let anidbConnectingAPI = 'plexanibridge' // or 'animeapi'
+
     // MyAnimeList
     const mal = magnet?.cloneNode(true);
     mal.href = `https://myanimelist.net/anime/0`
@@ -1727,16 +1899,32 @@ async function doFeatures() {
         mal.querySelector("i").remove()
         mal.innerHTML = '<i class="fa-solid fa-database fa-fw"></i>MyAnimeList'
 
-        mal.onclick = async function () {
-            event.preventDefault()
+        async function openMal(e, linkMap, mal) {
             if (!linkMap) {
-                linkMap = await fetchUrl(`https://animeapi.my.id/anidb/${tosho.anidb_aid}`)
-                mal.href = `https://myanimelist.net/anime/${linkMap.myanimelist}`
+                linkMap = await fetchAnidbLinkMap(tosho.anidb_aid, anidbConnectingAPI);
+                mal.href = linkMap.mal
             }
-
-            window.open(`https://myanimelist.net/anime/${linkMap.myanimelist}`, '_blank').focus();
-            return false
+            e.preventDefault();
+            const isMiddleClick = e.button === 1;
+            const isCtrlClick = e.ctrlKey || e.metaKey;
+            const openInBackground = isMiddleClick || isCtrlClick;
+            const url = mal.href;
+            if (openInBackground) {
+                try { GM_openInTab(url, { active: false }); } catch (_) { window.open(url, '_blank'); }
+            } else {
+                window.open(url, '_blank').focus();
+            }
+            return false;
+        }
+        mal.onclick = async function (event) {
+            event.preventDefault();
+            return openMal(event, linkMap, mal);
         };
+        mal.addEventListener('auxclick', async function (event) {
+            if (event.button !== 1) return;
+            event.preventDefault();
+            return openMal(event, linkMap, mal);
+        });
         parent?.appendChild(mal);
     }
 
@@ -1750,16 +1938,33 @@ async function doFeatures() {
         anilist.querySelector("i").remove()
         anilist.innerHTML = '<i class="fa-solid fa-database fa-fw"></i>AniList'
 
-        anilist.onclick = async function () {
-            event.preventDefault()
+        async function openAnilist(e, linkMap, anilist) {
             if (!linkMap) {
-                linkMap = await fetchUrl(`https://animeapi.my.id/anidb/${tosho.anidb_aid}`)
-                anilist.href = `https://anilist.co/anime/${linkMap.anilist}`
+                linkMap = await fetchAnidbLinkMap(tosho.anidb_aid, anidbConnectingAPI);
+                anilist.href = linkMap.anilist
             }
+            e.preventDefault();
+            const isMiddleClick = e.button === 1;
+            const isCtrlClick = e.ctrlKey || e.metaKey;
+            const openInBackground = isMiddleClick || isCtrlClick;
+            const url = anilist.href;
+            if (openInBackground) {
+                try { GM_openInTab(url, { active: false }); } catch (_) { window.open(url, '_blank'); }
+            } else {
+                window.open(url, '_blank').focus();
+            }
+            return false;
+        }
+        anilist.onclick = async function (event) {
+            event.preventDefault()
 
-            window.open(`https://anilist.co/anime/${linkMap.anilist}`, '_blank').focus();
-            return false
+            return openAnilist(event, linkMap, anilist);
         };
+        anilist.addEventListener('auxclick', async function (event) {
+            if (event.button !== 1) return;
+            event.preventDefault();
+            return openAnilist(event, linkMap, anilist);
+        });
         parent?.appendChild(anilist);
     }
 
@@ -1823,111 +2028,146 @@ async function doFeatures() {
         }
     }
 
-    // Tosho fetches
-    let toshoHtml = null;
-    let firstEpHtml = null;
     if (countVidFiles > 1) {
-        toshoHtml = await fetchUrl(toshoViewPageUrl);
+        window.toshoHtml = await fetchUrl(toshoViewPageUrl);
     }
-    firstEpHtml = await fetchUrl(`https://animetosho.org/file/${firstEpId}`);
+
+    async function doDynamicEpisodeFunctions(selectedEpId, selectedEpFilename, countVidFiles) {
+
+        // Tosho fetches
+        let selectedEpHtml = null;
+
+        selectedEpHtml = await fetchUrl(`https://animetosho.org/file/${selectedEpId}`);
 
 
-    // Fileinfo
-    let fileInfo = null;
-    if (firstEpId) {
-        fileInfo = await extractFileinfoFromHtml(firstEpHtml);
-        // console.log(fileInfo)
-        if (fileInfo && settings.fileinfo) {
-            let text = document.createTextNode(" or ");
-            parent?.appendChild(text);
+        // Fileinfo
+        let fileInfo = null;
+        if (selectedEpId) {
+            fileInfo = await extractFileinfoFromHtml(selectedEpHtml);
+            // console.log(fileInfo)
+            if (fileInfo && settings.fileinfo) {
+                let mediainfo = document.querySelector('a[href="#"]:has(i.fa-file)');
+                if (!mediainfo) {
+                    let text = document.createTextNode(" or ");
+                    parent?.appendChild(text);
 
-            const mediainfo = magnet?.cloneNode(true);
-            mediainfo.querySelector("i").remove();
-            mediainfo.innerHTML = '<i class="fa-solid fa-file fa-fw"></i>Fileinfo';
-            mediainfo.href = "#";
+                    mediainfo = magnet?.cloneNode(true);
+                    mediainfo.querySelector("i").remove();
+                    mediainfo.innerHTML = '<i class="fa-solid fa-file fa-fw"></i>Fileinfo';
+                    mediainfo.href = "#";
+                }
 
-            mediainfo.onclick = function () {
-                // Try to get the filename for the title
-                let fileTitle = firstEpFilename || 'Fileinfo';
-                const htmlContent = `
-                    <!DOCTYPE html>
-                    <html>
-                    <head>
-                        <title>${fileTitle.replace(/</g, '&lt;')}</title>
-                        <style>
-                            body {
-                                background-color: #121212;
-                                color: #ffffff;
-                                font-family: Arial, sans-serif;
-                                padding: 0px;
+                function openMediainfo(e) {
+                    if (e) e.preventDefault();
+                    // Try to get the filename for the title
+                    let fileTitle = selectedEpFilename || 'Fileinfo';
+                    const htmlContent = `
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <title>${fileTitle.replace(/</g, '&lt;')}</title>
+                            <style>
+                                body {
+                                    background-color: #121212;
+                                    color: #ffffff;
+                                    font-family: Arial, sans-serif;
+                                    padding: 0px;
+                                }
+                                pre {
+                                    white-space: pre-wrap;
+                                    word-wrap: break-word;
+                                }
+                            </style>
+                        </head>
+                        <body>
+                            <pre>${fileInfo}</pre>
+                        </body>
+                        </html>
+                    `;
+                    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+
+                    const isMiddleClick = e && e.button === 1;
+                    const isCtrlClick = e && (e.ctrlKey || e.metaKey);
+                    const shouldOpenWithoutFocus = isMiddleClick || isCtrlClick;
+                    const ua = navigator.userAgent.toLowerCase();
+                    const isFirefox = ua.includes('firefox');
+
+                    if (shouldOpenWithoutFocus) {
+                        if (isFirefox) {
+                            window.open(url, '_blank', 'noopener,noreferrer');
+                        } else {
+                            const win = window.open(url, '_blank', 'noopener,noreferrer');
+                            if (win) {
+                                try { win.blur(); } catch { }
+                                try { window.focus(); } catch { }
+                                setTimeout(() => {
+                                    try { win.blur(); } catch { }
+                                    try { window.focus(); } catch { }
+                                }, 0);
                             }
-                            pre {
-                                white-space: pre-wrap;
-                                word-wrap: break-word;
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <pre>${fileInfo}</pre>
-                    </body>
-                    </html>
-                `;
-                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                window.open(url, '_blank');
+                        }
+                    } else {
+                        window.open(url, '_blank');
+                    }
+                    return false;
+                }
 
-                return false;
-            };
+                mediainfo.onclick = openMediainfo;
+                mediainfo.addEventListener('auxclick', function (e) { if (e.button === 1) openMediainfo(e); });
 
-            parent?.appendChild(mediainfo);
+                parent?.appendChild(mediainfo);
+            }
+
         }
 
-    }
 
+        let subtitles = [];
 
-    let subtitles = [];
+        // Attachments
+        if (selectedEpId && toshoViewPageUrl) {
+            // Likely batch release so get the track attachments from first episode
+            if (countVidFiles > 1) {
+                subtitles = extractSubtitlesFromHtml(window.toshoHtml);
+                // Check that it is a batch release
+                if (subtitles.length == 1 && subtitles[0].text == "All Attachments") {
+                    subtitles[0].text = "All Attachments (Batch)";
+                }
+            }
 
-    // Attachments
-    if (firstEpId && toshoViewPageUrl) {
-        // Likely batch release so get the track attachments from first episode
-        if (countVidFiles > 1) {
-            toshoHtml = await fetchUrl(toshoViewPageUrl);
-            subtitles = extractSubtitlesFromHtml(toshoHtml);
-            // Check that it is a batch release
-            if (subtitles.length == 1 && subtitles[0].text == "All Attachments") {
-                subtitles[0].text = "All Attachments (Batch)";
+            // Get the track attachments from first episode
+            const selectedEpSubtitles = extractSubtitlesFromHtml(selectedEpHtml);
+            if (countVidFiles > 1) {
+                subtitles = [...subtitles, ...selectedEpSubtitles.slice(1)];
+            } else {
+                subtitles = selectedEpSubtitles;
+            }
+
+            if (settings.attachments !== "no" && subtitles.length > 0) {
+                addSubtitlesToTorrentList(subtitles, settings.filtersByDefault);
             }
         }
 
-        // Get the track attachments from first episode
-        const firstEpSubtitles = extractSubtitlesFromHtml(firstEpHtml);
-        if (countVidFiles > 1) {
-            subtitles = [...subtitles, ...firstEpSubtitles.slice(1)];
-        } else {
-            subtitles = firstEpSubtitles;
-        }
-
-        if (settings.attachments !== "no" && subtitles.length > 0) {
-            addSubtitlesToTorrentList(subtitles, settings.filtersByDefault);
+        // Screenshots
+        if (toshoViewPageUrl && settings.screenshots !== "no") {
+            let screenshots = [];
+            if (selectedEpHtml) {
+                screenshots = extractScreenshotsFromHtml(selectedEpHtml);
+            } else if (toshoHtml) {
+                screenshots = extractScreenshotsFromHtml(toshoHtml);
+            }
+            addScreenshotsToPage(screenshots, fileInfo, subtitles, selectedEpFilename);
         }
     }
 
-    // Screenshots
-    if (toshoViewPageUrl && settings.screenshots !== "no") {
-        let screenshots = [];
-        if (firstEpHtml) {
-            screenshots = extractScreenshotsFromHtml(firstEpHtml);
-        } else if (toshoHtml) {
-            screenshots = extractScreenshotsFromHtml(toshoHtml);
-        }
-        addScreenshotsToPage(screenshots, fileInfo, subtitles, firstEpFilename);
-    }
+    doDynamicEpisodeFunctions(selectedEpId, selectedEpFilename, countVidFiles, toshoViewPageUrl);
+    makeFileListClickable(countVidFiles, selectedEpId, tosho);
 
     // Delayed fetch so that the other ones are available faster
     if (settings.anilist || settings.myanimelist) {
-        if (!linkMap) linkMap = await fetchUrl(`https://animeapi.my.id/anidb/${tosho.anidb_aid}`);
-        anilist.href = `https://anilist.co/anime/${linkMap.anilist}`;
-        mal.href = `https://myanimelist.net/anime/${linkMap.myanimelist}`;
+        if (!linkMap) linkMap = await fetchAnidbLinkMap(tosho.anidb_aid, anidbConnectingAPI);
+        anilist.href = linkMap.anilist;
+        mal.href = linkMap.mal;
     }
 }
 
