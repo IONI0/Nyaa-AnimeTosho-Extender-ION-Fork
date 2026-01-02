@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-23
+// @version      0.61-24
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -30,7 +30,7 @@ const defaultSettings = {
     nzb: false,
     sabUrl: "http://ip:port/",
     nzbKey: "",
-    screenshots: "show", // "no", "hide", or "show"
+    screenshots: "hide", // "no", "hide", or "show"
     previewSize: "compact", // "compact", "medium", "large", "huge"
     subsByDefault: "first-nonforced", // "no", "first", "first-nonforced"
     attachments: "show", // "no", "hide", or "show"
@@ -149,6 +149,62 @@ function makePanelCollapsible(panel, startCollapsed = false) {
         }
         setHeaderControlsVisibility(!isCollapsed);
     });
+}
+
+function makeDescriptionPanelCollapsible(panelFooter) {
+    if (!panelFooter) return;
+
+    const descriptionElement = document.querySelector('#torrent-description');
+    if (!descriptionElement) return;
+
+    const descriptionPanel = descriptionElement.closest('.panel');
+    if (!descriptionPanel) return;
+
+    // Check if icon already exists
+    if (panelFooter.querySelector('i[data-description-collapse]')) return;
+
+    // Create chevron icon
+    const icon = document.createElement('i');
+    icon.className = 'fa-solid fa-chevron-down pull-right';
+    icon.style.transition = 'transform 0.2s';
+    icon.style.marginLeft = '20px';
+    icon.style.cursor = 'pointer';
+    icon.style.verticalAlign = 'middle';
+    icon.style.lineHeight = 'inherit';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.setAttribute('data-description-collapse', 'true');
+
+    let isCollapsed = false;
+
+    // Toggle function
+    icon.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        isCollapsed = !isCollapsed;
+
+        // Toggle panel visibility
+        if (isCollapsed) {
+            descriptionPanel.style.display = 'none';
+            icon.style.transform = 'rotate(-90deg)';
+        } else {
+            descriptionPanel.style.display = '';
+            icon.style.transform = 'rotate(0deg)';
+        }
+    });
+
+    // Insert icon on the right side of the panel-footer (rightmost position)
+    // Find existing pull-right elements
+    const pullRightElements = Array.from(panelFooter.querySelectorAll('.pull-right'));
+
+    if (pullRightElements.length > 0) {
+        // Insert before the first pull-right element so it appears as the rightmost element
+        // (with pull-right, first in DOM = rightmost visually)
+        pullRightElements[0].parentNode.insertBefore(icon, pullRightElements[0]);
+    } else {
+        // If no pull-right elements, append to the end (it will still be on the right due to pull-right class)
+        panelFooter.appendChild(icon);
+    }
 }
 
 function extractSubtitlesFromHtml(html) {
@@ -1732,6 +1788,11 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit) {
 }
 
 async function doFeatures() {
+    const magnet = document.querySelector("div > a.card-footer-item");
+
+    const parent = magnet?.parentElement;
+    makeDescriptionPanelCollapsible(parent);
+
     // Make the file list panel collapsible
     const fileListPanel = document.querySelector(".panel.panel-default > .torrent-file-list.panel-body");
     if (fileListPanel) {
@@ -1749,14 +1810,12 @@ async function doFeatures() {
         tosho.files.sort((a, b) => a.filename.localeCompare(b.filename));
     }
     console.log(tosho)
-    const magnet = document.querySelector("div > a.card-footer-item");
 
-    const parent = magnet?.parentElement;
 
     let linkMap = null
 
     let toshoViewPageUrl = "";
-    if (tosho.nyaa_id || tosho.anidex_id || tosho.tosho_id) {
+    if (tosho.nyaa_id || tosho.anidex_id || tosho.tosho_id || tosho.nekobt_id) {
         toshoViewPageUrl = 'https://animetosho.org/view/';
         if (tosho.nyaa_id)
             toshoViewPageUrl += `.n${tosho.nyaa_id}`;
@@ -1764,6 +1823,8 @@ async function doFeatures() {
             toshoViewPageUrl += `.d${tosho.anidex_id}`;
         else if (tosho.tosho_id)
             toshoViewPageUrl += `${tosho.tosho_id}`;
+        else if (tosho.nekobt_id)
+            toshoViewPageUrl += `.k${tosho.nekobt_id}`;
     }
 
     let selectedEpId = null;

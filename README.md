@@ -45,7 +45,8 @@ User script that extends Nyaa view page with AnimeTosho information. Original sc
 - For batch releases, Attachments will show All Attachments for everything and the individual tracks for the selected episode
 - ASS syntax highlighting is automatically enabled only for sub files with under 100,000 characters by default. Change the highlighterCharCap option in settings to change this number
 - You can also choose your own highlighter js styles. Try selecting from here https://highlightjs.org/examples
-- Subtitle contenting viewing and extracting only works for individual subtitle tracks not `All Attachments`
+- Subtitle content viewing and extracting only works for individual subtitle tracks not `All Attachments`
+- If you are changing files in file list and want to see their fileinfo it may be nice to collapse long descriptions so you don't have to scroll
 
 ---
 
