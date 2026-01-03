@@ -5,9 +5,13 @@
 - [>] Remove unnecessary preview if subtitle is PGS format
 
 ### 0.61-23
-- [*] Fix bug where multiple eventlisteners were active when switching episodes in files list
+- [>] Fix bug where multiple eventlisteners were active when switching episodes in files list
 
 ### 0.61-24
-- [*] Change screenshots default option from "Show" to "Hide" to avoid spoilers
+- [>] Change screenshots default option from "Show" to "Hide" to avoid spoilers
 - [+] Add torrent description collapse button to the right of the header. If you are changing files in file list and want to see their fileinfo it may be nice to collapse long descriptions so you don't have to scroll.
 - [+] Support torrents with only nekoBT_id
+
+### 0.61-25
+- [>] When AniDB -> AniList/MAL linking fails, clicking on them will give the option to go to AniDB page instead of doing nothing
+- [>] Fixed MAL/AniList ID being a list if multiple are associated with an AbiDB id, it will now select the first one.

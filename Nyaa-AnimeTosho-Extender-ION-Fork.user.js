@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      0.61-24
+// @version      0.61-25
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -1938,8 +1938,22 @@ async function doFeatures() {
 
         const linkMap = {};
         if (anidbConnectingAPI == 'plexanibridge') {
-            linkMap.mal = `https://myanimelist.net/anime/${out_response.results[0].mal_id}`;
-            linkMap.anilist = `https://anilist.co/anime/${out_response.results[0].anilist_id}`;
+            try {
+                const malId = out_response.results[0].mal_id;
+                const malIdValue = Array.isArray(malId) ? malId[0] : malId;
+                linkMap.mal = `https://myanimelist.net/anime/${malIdValue}`;
+            }
+            catch (error) {
+                linkMap.mal = "https://myanimelist.net/anime/0";
+            }
+            try {
+                const anilistId = out_response.results[0].anilist_id;
+                const anilistIdValue = Array.isArray(anilistId) ? anilistId[0] : anilistId;
+                linkMap.anilist = `https://anilist.co/anime/${anilistIdValue}`;
+            }
+            catch (error) {
+                linkMap.anilist = "https://anilist.co/anime/0";
+            }
         } else if (anidbConnectingAPI == 'animeapi') {
             linkMap.mal = `https://myanimelist.net/anime/${out_response.myanimelist}`;
             linkMap.anilist = `https://anilist.co/anime/${out_response.anilist}`;
@@ -1964,6 +1978,13 @@ async function doFeatures() {
             if (!linkMap) {
                 linkMap = await fetchAnidbLinkMap(tosho.anidb_aid, anidbConnectingAPI);
                 mal.href = linkMap.mal
+            }
+            if (linkMap.mal == "https://myanimelist.net/anime/0") {
+                const anidbUrl = "https://anidb.net/anime/" + tosho.anidb_aid;
+                if (window.confirm("No MyAnimeList link found for AniDB ID: " + tosho.anidb_aid + "\nOpen AniDB link instead?")) {
+                    window.open(anidbUrl, '_blank');
+                }
+                return false;
             }
             e.preventDefault();
             const isMiddleClick = e.button === 1;
@@ -2003,6 +2024,13 @@ async function doFeatures() {
             if (!linkMap) {
                 linkMap = await fetchAnidbLinkMap(tosho.anidb_aid, anidbConnectingAPI);
                 anilist.href = linkMap.anilist
+            }
+            if (linkMap.anilist == "https://anilist.co/anime/0") {
+                const anidbUrl = "https://anidb.net/anime/" + tosho.anidb_aid;
+                if (window.confirm("No AniList link found for AniDB ID: " + tosho.anidb_aid + "\nOpen AniDB link instead?")) {
+                    window.open(anidbUrl, '_blank');
+                }
+                return false;
             }
             e.preventDefault();
             const isMiddleClick = e.button === 1;
