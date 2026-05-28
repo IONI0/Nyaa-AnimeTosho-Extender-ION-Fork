@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.0.1
+// @version      1.0.2
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -2468,7 +2468,7 @@ async function doFeatures() {
                 })
                 return false
             };
-            nzb_sab.href = tosho.nzb_url
+            nzb_sab.href = nzb_url
             parent?.appendChild(nzb_sab);
 
         } else {

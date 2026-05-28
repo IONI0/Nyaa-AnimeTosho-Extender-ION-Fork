@@ -32,3 +32,6 @@
 
 ### V1.0.1
 - [>] Updated tabs to overflow nicer when screen is narrow
+
+### V1.0.2
+- [>] Fix NZB with api key for animetosho.xyz
