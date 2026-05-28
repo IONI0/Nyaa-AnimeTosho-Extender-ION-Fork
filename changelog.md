@@ -16,7 +16,7 @@
 - [>] When AniDB -> AniList/MAL linking fails, clicking on them will give the option to go to AniDB page instead of doing nothing
 - [>] Fixed MAL/AniList ID being a list if multiple are associated with an AbiDB id, it will now select the first one.
 
-### 1.0
+### V1.0
 - [+] Initial support for animetosho.xyz
 - [+] Option to add a description header as well as change its visibility
 - [+] Added a fileinfo panel (can be set as an item with the other links, a panel, or both)
@@ -29,3 +29,6 @@
 - [#] Animetosho.org remains the info source for everything before 2026.05.09
 - [#] Animetosho.xyz currently operates on a whitelist
 - [#] Screenshots subtitles selection and timestamps are currently not available on animetosho.xyz
+
+### V1.0.1
+- [>] Updated tabs to overflow nicer when screen is narrow

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.0
+// @version      1.0.1
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -305,11 +305,21 @@ function normalizePanelLayout(layout) {
         }
         .nyat-group-tabs {
             display: flex;
-            flex-wrap: wrap;
+            align-items: center;
+            flex: 1 1 auto;
+            flex-wrap: nowrap;
             gap: 0;
             margin: 0;
             padding: 0;
+            min-width: 0;
             background: transparent;
+            overflow-x: auto;
+            overflow-y: hidden;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+        .nyat-group-tabs::-webkit-scrollbar {
+            display: none;
         }
         .nyat-group-tabbar {
             display: flex;
@@ -322,8 +332,10 @@ function normalizePanelLayout(layout) {
         .nyat-group-tabbar .nyat-chevron {
             margin-left: auto;
             padding: 0 12px;
+            flex: 0 0 auto;
         }
         .nyat-group-tab {
+            flex: 0 0 auto;
             border: none;
             box-shadow: inset 0 -4px 0 transparent;
             border-radius: 0;
@@ -378,7 +390,8 @@ function normalizePanelLayout(layout) {
             display: none;
             align-items: center;
             gap: 8px;
-            flex-wrap: wrap;
+            flex: 0 0 auto;
+            flex-wrap: nowrap;
             margin-top: 0;
             padding: 0;
         }
@@ -388,7 +401,7 @@ function normalizePanelLayout(layout) {
             gap: 8px;
         }
         .nyat-group-actions .nyat-panel-left > * {
-            margin-left: 0 !important;
+            margin-left: 8px !important;
         }
         .nyat-group-content > .panel {
             margin-bottom: 0;
@@ -2718,7 +2731,6 @@ function reorderPanels() {
         const tabBar = document.createElement('div');
         tabBar.className = 'nyat-group-tabbar';
         tabBar.appendChild(tabs);
-        tabBar.appendChild(actions);
 
         const content = document.createElement('div');
         content.className = 'panel-body nyat-group-content';
@@ -2822,6 +2834,8 @@ function reorderPanels() {
             const observer = new MutationObserver(() => refreshTabLabels());
             observer.observe(panel, { childList: true, subtree: true, characterData: true });
         });
+
+        tabs.appendChild(actions);
 
         if (groupPanels.length > 0) {
             activateTab(activeIndex);
