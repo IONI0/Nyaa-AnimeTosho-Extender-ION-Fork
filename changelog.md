@@ -41,3 +41,7 @@
 - [+] Added option to add NekoBT link
 - [>] Fixes for animetosho.xyz due to changed layout
 - [>] Initial fetch for animetosho.xyz now uses api
+
+### V1.1.1
+- [>] Fix "All Attachments" appearing for Tsukihime even when there are no attachments
+- [>] Changed to not add ?s= param when selecting SRT tracks as they are not rendered anyways

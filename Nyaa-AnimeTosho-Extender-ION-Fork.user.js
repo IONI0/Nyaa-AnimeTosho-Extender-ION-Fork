@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.1.0
+// @version      1.1.1
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -1265,10 +1265,15 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
             titleOverlay.textContent = title;
 
             const img = document.createElement("img");
+
+            let effectiveTrackNum = trackNum;
+            if (trackSelector.options[trackSelector.selectedIndex].text.includes("SRT")) {
+                effectiveTrackNum = null;
+            }
             if (info_source != "AnimeTosho.xyz") {
-                img.src = getImageUrl(url.replace('.png', '.jpg'), trackNum);
+                img.src = getImageUrl(url.replace('.png', '.jpg'), effectiveTrackNum);
             } else {
-                img.src = getImageUrl(url, trackNum);
+                img.src = getImageUrl(url, effectiveTrackNum);
             }
             img.onload = () => {
                 imgContainer.style.paddingBottom = `${img.naturalHeight / img.naturalWidth * 100}%`;
@@ -1282,7 +1287,7 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
                 e.preventDefault();
                 const currentIndex = screenshots.findIndex(s => s.title === title);
                 const currentTrackName = trackSelector.options[trackSelector.selectedIndex].text;
-                openScreenshotModal(screenshots, currentIndex, trackNum, episodeTitle, currentTrackName);
+                openScreenshotModal(screenshots, currentIndex, effectiveTrackNum, episodeTitle, currentTrackName);
             });
         });
     }
@@ -2847,6 +2852,10 @@ async function doFeatures() {
                             "link": `https://storage.tsukihime.org/attach/${attachment.id.toString(16).padStart(8, '0').toUpperCase()}/${filenameNoPath.replace(/\.[^/.]+$/, "")}_track${attachment.info.tracknum}.${attachment.info.lang.toLowerCase()}.${attachment.info.codec.toLowerCase()}.xz`
                         });
                     }
+                }
+
+                if (subtitles.length === 1) { // Doesn't actually have any attachments
+                    subtitles = [];
                 }
             }
 
