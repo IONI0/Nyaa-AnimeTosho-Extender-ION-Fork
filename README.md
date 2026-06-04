@@ -1,13 +1,14 @@
 # Nyaa AnimeTosho Extender ION Fork
 
-User script that extends nyaa.si/view page with AnimeTosho information. All information comes from [AnimeTosho.org](https://animetosho.org/) (Pre 2026-05-09) and [AnimeTosho.xyz](https://animetosho.xyz/). AnimeTosho only scrapes a subset of all releases in the Anime English-translated category, it may skip certain files, and takes time to process new episodes so not all pages will have complete information.
+User script that extends nyaa.si/view page with AnimeTosho information. All information comes from [AnimeTosho.org](https://animetosho.org/) (Pre 2026-05-09), [Tsukihime.org](https://tsukihime.org), and [AnimeTosho.xyz](https://animetosho.xyz/). They only scrapes a subset of all releases in the Anime category, may skip certain files, and takes time to process new episodes so not all pages will have complete information.
 
 ### Functionality
-- Link to AnimeTosho page
+- Link to Source page
 - NZB link with option for unique sabUrl and NZB key
 - View fileinfo
 - Settings GUI to enable only the features you want
 - Link to Series AniDB/MyAnimeList/AniList
+- Link to NekoBT page
 - Screenshots with a dropdown to select which subtitle track is present in the screenshots (Animetosho.org only)
 - Full-sized screenshot viewer
 - Attachments download options for all tracks with language filters and option to extract the .xz for you

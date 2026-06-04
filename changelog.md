@@ -35,3 +35,9 @@
 
 ### V1.0.2
 - [>] Fix NZB with api key for animetosho.xyz
+
+### V1.1.0
+- [+] Initial support for Tsukihime.org
+- [+] Added option to add NekoBT link
+- [>] Fixes for animetosho.xyz due to changed layout
+- [>] Initial fetch for animetosho.xyz now uses api

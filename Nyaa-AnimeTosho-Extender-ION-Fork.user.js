@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.0.2
+// @version      1.1.0
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -12,7 +12,7 @@
 // @grant        GM.getValue
 // @grant        GM.setValue
 // @grant        GM.registerMenuCommand
-// @require      https://cdn.jsdelivr.net/npm/xz-decompress@0.2.2/dist/package/xz-decompress.min.js
+// @require      https://cdn.jsdelivr.net/npm/xz-decompress@0.2.3/dist/package/xz-decompress.min.js
 // @match        https://nyaa.si/view/*
 // @run-at       document-end
 // ==/UserScript==
@@ -26,6 +26,7 @@ const defaultSettings = {
     myanimelist: false,
     anilist: true,
     animetosho: true,
+    nekobt: true,
     fileinfoMode: "panel", // "no", "item", "panel", or "both"
     fileinfoPanel: "hide", // "hide" or "show" (panel collapse state)
     fileinfoHeight: 300,
@@ -48,7 +49,7 @@ const defaultSettings = {
     attachmentAction: "view", // "view", "download", "download extracted"
     highlighterCharCap: 100000, // Under this amount of characters, the highlighter will be enabled by default when viewing
     highlighterStyle: "felipec", // highlight.js style name
-    languageFilters: ["eng", "enm", "und"],
+    languageFilters: ["en", "eng", "enm", "und"],
 }
 
 let settings = {}
@@ -63,6 +64,9 @@ const panelLabels = {
     attachments: 'Attachments',
     comments: 'Comments',
 };
+
+
+
 function createDefaultPanelLayout() {
     const layout = defaultSettings.panelLayout || panelKeys.map(key => ({ type: 'panel', key }));
     return clonePanelLayout(layout);
@@ -607,7 +611,7 @@ function extractSubtitlesFromHtml(html) {
         const subtitles = [];
         // Regex to locate the Subtitles section
         const subtitlesRegex = /<th.*?>Extractions<\/th>.*?Subtitles:(.*?)<\/td>/s;
-        const alternativeRegex = /<th>Subtitles<\/th>.*?<td>(.*?)<\/td>/s;
+        const alternativeRegex = /Subtitles<\/th>.*?<td>(.*?)<\/td>/s;
         let match = html.match(subtitlesRegex);
         if (!match) {
             match = html.match(alternativeRegex);
@@ -745,6 +749,49 @@ function parseToshoXyzSearch(input, method = 'html') {
     } catch (error) {
         console.error("Error parsing AnimeTosho.xyz search data:", error);
         return null;
+    }
+}
+
+function extractAnimeToshoXyzFileMeta(html) {
+    try {
+        const doc = new DOMParser().parseFromString(html, "text/html");
+
+        // Current layout: <th>File Name (Size)</th> then link in adjacent <td>
+        const fileNameRow = [...doc.querySelectorAll('tr')]
+            .find(row => (row.querySelector('th')?.textContent || '').trim().startsWith('File Name'));
+        const rowAnchor = fileNameRow?.querySelector('td a[href]');
+        if (rowAnchor) {
+            return {
+                filename: (rowAnchor.textContent || '').trim(),
+                fileInfoLink: rowAnchor.getAttribute('href') || '',
+            };
+        }
+
+        // Fallback for older page layout.
+        const legacyAnchor = doc.querySelector('a.filemeta_name');
+        if (legacyAnchor) {
+            return {
+                filename: (legacyAnchor.textContent || '').trim(),
+                fileInfoLink: legacyAnchor.getAttribute('href') || '',
+            };
+        }
+    } catch (error) {
+        console.error('Error extracting AnimeTosho.xyz file metadata:', error);
+    }
+
+    return { filename: '', fileInfoLink: '' };
+}
+
+async function fetchTsukihimeFileMediainfo(torrentId, fileId, torrentFile) {
+    if (torrentFile?.mediainfo) return torrentFile.mediainfo;
+    if (!torrentId || !fileId) return '';
+
+    try {
+        const response = await fetchUrl(`https://api.tsukihime.org/v1/torrents/${torrentId}/file/${fileId}`);
+        return response?.mediainfo || response?.info?.mediainfo || '';
+    } catch (error) {
+        console.error('Error fetching Tsukihime mediainfo:', error);
+        return '';
     }
 }
 
@@ -1218,8 +1265,11 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
             titleOverlay.textContent = title;
 
             const img = document.createElement("img");
-            img.src = getImageUrl(url.replace('.png', '.jpg'), trackNum);
-
+            if (info_source != "AnimeTosho.xyz") {
+                img.src = getImageUrl(url.replace('.png', '.jpg'), trackNum);
+            } else {
+                img.src = getImageUrl(url, trackNum);
+            }
             img.onload = () => {
                 imgContainer.style.paddingBottom = `${img.naturalHeight / img.naturalWidth * 100}%`;
             };
@@ -1574,7 +1624,6 @@ async function getValidHighlighterStyle(styleName) {
     return 'atom-one-dark';
 }
 
-// Utility: Extract filename from URL (including query params if present)
 function getFileNameFromUrl(url) {
     try {
         const u = new URL(url);
@@ -1593,6 +1642,104 @@ function getFileNameFromUrl(url) {
     } catch {
         return 'subtitle.xz';
     }
+}
+
+function xzStripSha256(arrayBuffer) {
+    // For xz decompression with SHA-256 integrity checks (on tsukihime) as xz-decompress does not supoort it
+    function writeVarInt(value) {
+        const bytes = [];
+        do { let b = value & 0x7F; value >>>= 7; if (value) b |= 0x80; bytes.push(b); } while (value);
+        return bytes;
+    }
+    function readVarInt(src, p) {
+        let val = 0, shift = 0, byte;
+        do { byte = src[p++]; val |= (byte & 0x7F) << shift; shift += 7; } while (byte & 0x80);
+        return { value: val, pos: p };
+    }
+    function crc32xz(data) {
+        let crc = 0xFFFFFFFF;
+        for (let i = 0; i < data.length; i++) {
+            crc ^= data[i];
+            for (let j = 0; j < 8; j++) crc = (crc >>> 1) ^ (crc & 1 ? 0xEDB88320 : 0);
+        }
+        return (crc ^ 0xFFFFFFFF) >>> 0;
+    }
+    const src = new Uint8Array(arrayBuffer);
+    const dv = new DataView(arrayBuffer);
+    const n = src.length;
+
+    if ((src[7] & 0x0F) !== 0x0A) return arrayBuffer; // not SHA-256, pass through
+
+    const SHA256_SIZE = 32;
+
+    // Parse footer to find index
+    const backwardSizeRaw = dv.getUint32(n - 8, true);
+    const indexSize = (backwardSizeRaw + 1) * 4;
+    const indexStart = n - 12 - indexSize;
+
+    // Parse index
+    let p = indexStart + 1; // skip indicator byte 0x00
+    let r = readVarInt(src, p); const numRecords = r.value; p = r.pos;
+    const records = [];
+    for (let i = 0; i < numRecords; i++) {
+        r = readVarInt(src, p); const unpaddedSize = r.value; p = r.pos;
+        r = readVarInt(src, p); const uncompressedSize = r.value; p = r.pos;
+        records.push({ unpaddedSize, uncompressedSize });
+    }
+
+    const out = [];
+
+    // Patched stream header (check type → None)
+    const newHeader = src.slice(0, 12);
+    newHeader[7] = 0x00;
+    new DataView(newHeader.buffer).setUint32(8, crc32xz(newHeader.slice(6, 8)), true);
+    out.push(newHeader);
+
+    // Blocks: strip 32-byte SHA-256 check from each
+    let blockStart = 12;
+    const newRecords = [];
+    for (const { unpaddedSize, uncompressedSize } of records) {
+        const blockHeaderSize = (src[blockStart] + 1) * 4;
+        const compressedSize = unpaddedSize - blockHeaderSize - SHA256_SIZE;
+        const newUnpaddedSize = unpaddedSize - SHA256_SIZE;
+        const oldPaddedSize = Math.ceil(unpaddedSize / 4) * 4;
+        // SHA256_SIZE is divisible by 4 so padding amount is unchanged
+        const padLen = oldPaddedSize - SHA256_SIZE - newUnpaddedSize;
+
+        out.push(src.slice(blockStart, blockStart + blockHeaderSize + compressedSize));
+        if (padLen > 0) out.push(new Uint8Array(padLen));
+
+        blockStart += oldPaddedSize;
+        newRecords.push({ unpaddedSize: newUnpaddedSize, uncompressedSize });
+    }
+
+    // Rebuild index
+    const idxParts = [0x00, ...writeVarInt(numRecords)];
+    for (const { unpaddedSize, uncompressedSize } of newRecords) {
+        idxParts.push(...writeVarInt(unpaddedSize), ...writeVarInt(uncompressedSize));
+    }
+    while (idxParts.length % 4 !== 0) idxParts.push(0x00);
+    const idxData = new Uint8Array(idxParts);
+    const newIndex = new Uint8Array(idxData.length + 4);
+    newIndex.set(idxData);
+    new DataView(newIndex.buffer).setUint32(idxData.length, crc32xz(idxData), true);
+    out.push(newIndex);
+
+    // Rebuild footer
+    const newFooter = new Uint8Array(12);
+    const fdv = new DataView(newFooter.buffer);
+    fdv.setUint32(4, (newIndex.length / 4) - 1, true); // new backward size
+    newFooter[8] = 0x00; newFooter[9] = 0x00;          // stream flags: None
+    newFooter[10] = 0x59; newFooter[11] = 0x5A;        // footer magic YZ
+    fdv.setUint32(0, crc32xz(newFooter.slice(4, 10)), true);
+    out.push(newFooter);
+
+    // Concatenate
+    const total = out.reduce((s, p) => s + p.length, 0);
+    const result = new Uint8Array(total);
+    let off = 0;
+    for (const p of out) { result.set(p, off); off += p.length; }
+    return result.buffer;
 }
 
 function addSubtitlesToTorrentList(subtitles, isFilteredInit, selectedEpFilename) {
@@ -1703,6 +1850,8 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit, selectedEpFilename
                 settings.languageFilters.some(filter =>
                     subtitle.text.includes(`${filter} [`)
                     || subtitle.text.includes(`[${filter},`)
+                    || subtitle.text.includes(`[${filter}-`)
+                    || new RegExp(`\\b${filter}-[^\\s\\]]+ \\[`).test(subtitle.text)
                     || subtitle.text.includes("All Attachments")
                 )
             )
@@ -1729,24 +1878,40 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit, selectedEpFilename
                 const isCtrlClick = e.ctrlKey || e.metaKey;
                 const shouldOpenWithoutFocus = isMiddleClick || isCtrlClick;
 
-                try {
-                    // Fetch the subtitle file as an arraybuffer via GM (bypasses CORS)
-                    const response = await fetchUrlRaw(link);
-                    const download_url = response.finalUrl || response.responseURL;
-                    // console.log(download_url)
-                    const arrayBuffer = response.response;
-                    const XzReadableStream = window['xz-decompress']?.XzReadableStream;
-                    if (!XzReadableStream) throw new Error('XZ decompressor not found');
-                    const decompressedStream = new XzReadableStream(new Response(arrayBuffer).body);
-                    const decompressedText = await new Response(decompressedStream).text();
-                    // Encode original arraybuffer as base64 to embed directly in the HTML
-                    const originalBase64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
-                    // Get the filename from the URL
-                    const fileName = getFileNameFromUrl(download_url).replace(/</g, '&lt;');
-                    console.log(fileName)
-                    // console.log(fileName)
-                    // Open in new tab
-                    const htmlContent = `
+                // try {
+                // Fetch the subtitle file as an arraybuffer via GM (bypasses CORS)
+                let start_time = Date.now();
+                const response = await fetchUrlRaw(link);
+                console.log(`Fetch time for subtitle: ${Date.now() - start_time}ms`);
+                const download_url = response.finalUrl || response.responseURL;
+                // console.log(download_url)
+                const arrayBuffer = response.response;
+                const patchedBuffer = xzStripSha256(arrayBuffer);
+                const XzReadableStream = window['xz-decompress']?.XzReadableStream;
+                const decompressedStream = new XzReadableStream(new Response(patchedBuffer).body);
+                const decompressedText = await new Response(decompressedStream).text();
+
+                // if (!XzReadableStream) throw new Error('XZ decompressor not found');
+                // const decompressedStream = new XzReadableStream(new Response(arrayBuffer).body, { memoryLimit: 128 * 1024 * 1024 });
+                // const decompressedText = await new Response(decompressedStream).text();
+                // Encode original arraybuffer as base64 to embed directly in the HTML
+                console.log(`Decompressed subtitle in ${Date.now() - start_time}ms`);
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = '';
+
+                const chunkSize = 0x8000; // 32KB
+
+                for (let i = 0; i < bytes.length; i += chunkSize) {
+                    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+                }
+
+                const originalBase64 = btoa(binary);
+                console.log(`Encoded original subtitle in base64 in ${Date.now() - start_time}ms`);
+                // Get the filename from the URL
+                const fileName = getFileNameFromUrl(download_url).replace(/</g, '&lt;');
+                // console.log(fileName)
+                // Open in new tab
+                const htmlContent = `
                             <!DOCTYPE html>
                             <html>
                             <head>
@@ -1902,7 +2067,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit, selectedEpFilename
                                     </div>
                                 </div>
                                 ${isPgsFile ? `<pre>No preview available for PGS files</pre>` :
-                            isHighlightableFile ? `<pre><code class="${isAssFile ? 'language-ass' : 'language-srt'}">${decompressedText.replace(/</g, '&lt;')}</code></pre>` : `<pre>${decompressedText.replace(/</g, '&lt;')}</pre>`}
+                        isHighlightableFile ? `<pre><code class="${isAssFile ? 'language-ass' : 'language-srt'}">${decompressedText.replace(/</g, '&lt;')}</code></pre>` : `<pre>${decompressedText.replace(/</g, '&lt;')}</pre>`}
                                 <script>
                                 (function() {
                                     const fileName = '${fileName.replace(/'/g, "\\'")}';
@@ -1984,25 +2149,25 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit, selectedEpFilename
                             </body>
                             </html>
                         `;
-                    // Pass the original link and blob to the new tab for download
-                    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    if (shouldOpenWithoutFocus) {
-                        const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
-                        if (isFirefox) {
-                            let win = window.open(url, '_blank', 'noopener,noreferrer');
-                        } else {
-                            try {
-                                GM_openInTab(url, { active: false });
-                            } catch (err) { }
-                        }
-
+                // Pass the original link and blob to the new tab for download
+                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                if (shouldOpenWithoutFocus) {
+                    const isFirefox = navigator.userAgent.toLowerCase().includes('firefox');
+                    if (isFirefox) {
+                        let win = window.open(url, '_blank', 'noopener,noreferrer');
                     } else {
-                        window.open(url, '_blank');
+                        try {
+                            GM_openInTab(url, { active: false });
+                        } catch (err) { }
                     }
-                } catch (err) {
-                    alert('Failed to view subtitle: ' + err.message);
+
+                } else {
+                    window.open(url, '_blank');
                 }
+                // } catch (err) {
+                //     alert('Failed to view subtitle: ' + err.message);
+                // }
             }
             if (settings.attachmentAction === 'view' && !text.includes('All Attachments')) {
                 anchor.addEventListener('click', async function (e) {
@@ -2114,8 +2279,20 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit, selectedEpFilename
     updateFilter();
 }
 
+function formatTimestamp(ms) {
+    const totalSeconds = Math.floor(ms / 1000);
+
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${hours.toString().padStart(2, "0")}:` +
+        `${minutes.toString().padStart(2, "0")}:` +
+        `${seconds.toString().padStart(2, "0")}`;
+}
+
 async function doFeatures() {
-    const TOSHO_XYZ_METHOD = 'html'; // 'html' uses hash search, 'api' uses title search
+    const TOSHO_XYZ_METHOD = 'api'; // 'html' uses hash search, 'api' uses title search
     let startTime = performance.now();
     const magnet = document.querySelector("div > a.card-footer-item");
 
@@ -2167,8 +2344,8 @@ async function doFeatures() {
     const timestamp = document.querySelector("[data-timestamp]").dataset.timestamp;
     const isAnimeEnglishTranslated = !!document.querySelector('.panel-body a[href="/?c=1_2"]');
     if (!isAnimeEnglishTranslated) {
-        console.log("Not Anime English Translated, skipping...");
-        return;
+        // console.log("Not Anime English Translated, skipping...");
+        // return;
     }
     // console.log(title)
 
@@ -2176,6 +2353,7 @@ async function doFeatures() {
 
     let tosho = null;
     let tosho_xyz = null;
+    let tsukihime = null;
     if (timestamp < 1778284800) { // 2026-05-09 when Animetosho.org stopped updating
         console.log(`Fetching tosho: ${performance.now() - startTime}ms`);
         tosho = await fetchUrl(`https://feed.animetosho.org/json?show=torrent&btih=${hash}`);
@@ -2187,22 +2365,34 @@ async function doFeatures() {
         info_source = "AnimeTosho";
         console.log(tosho)
     } else {
-        console.log(`Fetching tosho_xyz: ${performance.now() - startTime}ms`);
-        if (TOSHO_XYZ_METHOD === 'api') {
-            const title_url_encoded = encodeURIComponent(title);
-            const tosho_xyz_json = await fetchUrl(`https://feed.animetosho.xyz/json/v1/search?q=${title_url_encoded}&limit=1`);
-            tosho_xyz = parseToshoXyzSearch(tosho_xyz_json, 'api');
+        console.log(`Fetching tsukihime: ${performance.now() - startTime}ms`);
+        tsukihime = await fetchUrl(`https://api.tsukihime.org/v1/torrents/btih/${hash}`)
+        console.log(tsukihime)
+
+        if (tsukihime?.state) {
+            info_source = "TsukiHime";
         } else {
-            const tosho_xyz_html = await fetchUrl(`https://animetosho.xyz/search?q=${hash}`);
-            tosho_xyz = parseToshoXyzSearch(tosho_xyz_html, 'html');
+            console.log(`Fetching tosho_xyz: ${performance.now() - startTime}ms`);
+            if (TOSHO_XYZ_METHOD === 'api') {
+                // const title_url_encoded = encodeURIComponent(title);
+                // const tosho_xyz_json = await fetchUrl(`https://feed.animetosho.xyz/json/v1/search?q=${title_url_encoded}&limit=1`);
+                const tosho_xyz_json = await fetchUrl(`https://feed.animetosho.xyz/json/v1/search?q=${hash}&limit=1`);
+                tosho_xyz = parseToshoXyzSearch(tosho_xyz_json, 'api');
+                console.log(tosho_xyz)
+            } else {
+                const tosho_xyz_html = await fetchUrl(`https://animetosho.xyz/search?q=${hash}`);
+                tosho_xyz = parseToshoXyzSearch(tosho_xyz_html, 'html');
+            }
+
+            console.log(`Fetched tosho_xyz: ${performance.now() - startTime}ms`);
+            info_source = "AnimeTosho.xyz";
+            if (!tosho_xyz || !tosho_xyz.viewId) {
+                console.log("No AnimeTosho.xyz results found, skipping...");
+                return;
+            }
         }
 
-        console.log(`Fetched tosho_xyz: ${performance.now() - startTime}ms`);
-        info_source = "AnimeTosho.xyz";
-        if (!tosho_xyz || !tosho_xyz.viewId) {
-            console.log("No AnimeTosho.xyz results found, skipping...");
-            return;
-        }
+
     }
 
 
@@ -2226,15 +2416,20 @@ async function doFeatures() {
         case "AnimeTosho.xyz":
             toshoViewPageUrl = tosho_xyz?.viewUrl || (tosho_xyz?.viewId ? `https://animetosho.xyz/view/${tosho_xyz.viewId}` : "");
             break;
+        case "TsukiHime":
+            toshoViewPageUrl = `https://tsukihime.org/view/${tsukihime.id}`
+            break;
     }
 
     let selectedEpId = null;
     let selectedEpFilename = null; // Without folder name
     let countVidFiles = 0;
+    const torrentFiles = info_source === "TsukiHime" ? tsukihime?.files : tosho?.files;
     switch (info_source) {
         case "AnimeTosho":
-            if (tosho.files) {
-                for (const file of tosho.files) {
+        case "TsukiHime":
+            if (torrentFiles) {
+                for (const file of torrentFiles) {
                     const filename = file.filename.toLowerCase();
                     if (!filename.endsWith(".mkv") && !filename.endsWith(".mp4") && !filename.endsWith(".ts")) continue;
                     if ((filename.startsWith("extra") || filename.startsWith("bonus") || filename.startsWith("special") || filename.startsWith("creditless")) && filename.includes("/")) continue;
@@ -2248,6 +2443,7 @@ async function doFeatures() {
             break;
         case "AnimeTosho.xyz":
             selectedEpId = tosho_xyz?.viewId;
+            break;
     }
 
 
@@ -2261,6 +2457,11 @@ async function doFeatures() {
         case "AnimeTosho.xyz":
             anidb_aid = tosho_xyz?.seriesId;
             break;
+        case "TsukiHime":
+            anidb_aid = tsukihime.anime.anidb;
+            linkMap = {};
+            linkMap.mal = `https://myanimelist.net/anime/${tsukihime.anime.mal}`;
+            linkMap.anilist = `https://anilist.co/anime/${tsukihime.anime.anilist}`;
     }
     // console.log(anidb_aid)
 
@@ -2421,13 +2622,24 @@ async function doFeatures() {
         const animetosho = magnet?.cloneNode(true);
 
         animetosho.querySelector("i").remove()
-
-        if (tosho?.status == "skipped") {
-            animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho (Skipped)';
-        } else if (tosho?.status == "processing") {
-            animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho (Processing)';
-        } else {
-            animetosho.innerHTML = '<i class="fa-solid fa-at fa-fw"></i>AnimeTosho';
+        if (info_source == "AnimeTosho.xyz" || info_source == "AnimeTosho") {
+            if (tosho?.status == "skipped") {
+                animetosho.innerHTML = `<i class="fa-solid fa-at fa-fw"></i>${info_source} (Skipped)`;
+            } else if (tosho?.status == "processing") {
+                animetosho.innerHTML = `<i class="fa-solid fa-at fa-fw"></i>${info_source} (Processing)`;
+            } else {
+                animetosho.innerHTML = `<i class="fa-solid fa-at fa-fw"></i>${info_source}`;
+            }
+        } else if (info_source == "TsukiHime") {
+            if (tsukihime?.state == "skipped") {
+                animetosho.innerHTML = '<i class="fa-solid fa-moon fa-fw"></i>TsukiHime (Skipped)';
+            } else if (tsukihime?.state == "unprocessed") {
+                animetosho.innerHTML = '<i class="fa-solid fa-moon fa-fw"></i>TsukiHime (Unprocessed)';
+            } else if (tsukihime?.state == "processing") {
+                animetosho.innerHTML = '<i class="fa-solid fa-moon fa-fw"></i>TsukiHime (Processing)';
+            } else {
+                animetosho.innerHTML = '<i class="fa-solid fa-moon fa-fw"></i>TsukiHime';
+            }
         }
         animetosho.href = toshoViewPageUrl
         animetosho.onclick = function () {
@@ -2446,6 +2658,11 @@ async function doFeatures() {
         case "AnimeTosho.xyz":
             nzb_url = tosho_xyz?.nzbUrl || null;
             break;
+        case "TsukiHime":
+            if (tsukihime.has_nzb == 1) {
+                nzb_url = `https://storage.tsukihime.org/nzbs/${tsukihime.id}/${encodeURIComponent(title)}.nzb.gz`;
+            }
+
     }
     if (nzb_url && settings.nzb) {
         let text = document.createTextNode(" or ")
@@ -2483,7 +2700,54 @@ async function doFeatures() {
         }
     }
 
-    if (countVidFiles > 1) {
+    // NekoBT
+    if (settings.nekobt) {
+        let nekobt_id = null;
+
+        if (info_source === "TsukiHime") {
+            nekobt_id = tsukihime.nekobt_id;
+            injectLink();
+        } else {
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: `https://nekobt.to/api/v1/torrents/search?query=${hash}`,
+
+                onload: function (response) {
+                    try {
+                        const json = JSON.parse(response.responseText);
+                        nekobt_id = json?.data?.infohash_match ?? null;
+                    } catch (e) {
+                        console.warn("NekoBT JSON parse failed:", e);
+                    }
+                    injectLink();
+                },
+                onerror: function (err) {
+                    console.warn("NekoBT request failed:", err);
+                }
+            });
+        }
+
+        function injectLink() {
+            if (!nekobt_id) return;
+            const text = document.createTextNode(" or ");
+            parent?.appendChild(text);
+            const nekobt = magnet?.cloneNode(true);
+            if (!nekobt) return;
+            const icon = nekobt.querySelector("i");
+            if (icon) icon.remove();
+            nekobt.innerHTML = '<i class="fa-solid fa-cat fa-fw"></i>NekoBT';
+            const nekobtUrl = `https://nekobt.to/torrents/${nekobt_id}`;
+            nekobt.href = nekobtUrl;
+
+            nekobt.onclick = function (e) {
+                e.preventDefault();
+                window.open(nekobtUrl, "_blank")?.focus();
+            };
+            parent?.appendChild(nekobt);
+        }
+    }
+
+    if (countVidFiles > 1 && info_source !== "TsukiHime") {
         window.toshoHtml = await fetchUrl(toshoViewPageUrl);
     }
 
@@ -2491,27 +2755,39 @@ async function doFeatures() {
         // For now selected Ep id is just the tosho id for xyz. Change later if batch support is added
         let selectedEpFilename = null;
 
+        // Tsukihime
+        let filenameNoPath = null;
+        let currentText = null;
+        let currentFile = null;
+
         switch (info_source) {
             case "AnimeTosho":
                 selectedEpHtml = await fetchUrl(`https://animetosho.org/file/${selectedEpId}`);
                 selectedEpFilename = selectedEpFilename_input;
                 break;
+            case "TsukiHime":
+                selectedEpFilename = selectedEpFilename_input;
+                for (file of tsukihime.files) {
+                    filenameNoPath = file.filename.split("/").pop();
+                    if (filenameNoPath === selectedEpFilename) {
+                        currentFile = file;
+                        break;
+                    }
+                }
+                break;
             case "AnimeTosho.xyz":
                 console.log(`Fetching selectedEpHtmlNoMediaInfo: ${performance.now() - startTime}ms`);
                 selectedEpHtmlNoMediaInfo = await fetchUrl(`https://animetosho.xyz/view/${selectedEpId}`);
                 console.log(`Fetched selectedEpHtmlNoMediaInfo: ${performance.now() - startTime}ms`);
-
                 selectedEpHtml = selectedEpHtmlNoMediaInfo;
-                const doc = new DOMParser().parseFromString(selectedEpHtml, "text/html");
-                selectedEpFilename = doc.querySelector("a.filemeta_name")?.textContent;
-
+                const fileMeta = extractAnimeToshoXyzFileMeta(selectedEpHtml);
+                selectedEpFilename = selectedEpFilename_input;
                 break;
         }
 
-
         // Fileinfo
         let fileInfo = null;
-        if (selectedEpId && info_source == "AnimeTosho") { // AnimeTosho.xyz does it at the end for now
+        if (selectedEpId && info_source == "AnimeTosho") {
             fileInfo = await extractFileinfoFromHtml(selectedEpHtml);
             // console.log(fileInfo)
             if (fileInfo && settings.fileinfoMode !== "no") {
@@ -2519,32 +2795,58 @@ async function doFeatures() {
             }
         }
 
-
         let subtitles = [];
 
         // Attachments
         if (selectedEpId && toshoViewPageUrl) {
-            // Likely batch release so get the track attachments from first episode
-            if (countVidFiles > 1) {
-                subtitles = extractSubtitlesFromHtml(window.toshoHtml);
-                // Check that it is a batch release
-                if (subtitles.length == 1 && subtitles[0].text == "All Attachments") {
-                    subtitles[0].text = "All Attachments (Batch)";
+            if (info_source == "AnimeTosho" || info_source == "AnimeTosho.xyz") {
+                // Likely batch release so get the track attachments from first episode
+                if (countVidFiles > 1) {
+                    subtitles = extractSubtitlesFromHtml(window.toshoHtml);
+                    // Check that it is a batch release
+                    if (subtitles.length == 1 && subtitles[0].text == "All Attachments") {
+                        subtitles[0].text = "All Attachments (Batch)";
+                    }
+                }
+
+                // Get the track attachments from first episode
+                // console.log(selectedEpHtml)
+                const selectedEpSubtitles = extractSubtitlesFromHtml(selectedEpHtml);
+                if (countVidFiles > 1) {
+                    subtitles = [...subtitles, ...selectedEpSubtitles.slice(1)];
+                } else {
+                    subtitles = selectedEpSubtitles;
+                }
+
+                // console.log(subtitles)
+                if (info_source == "AnimeTosho.xyz") {
+                    for (const subtitle of subtitles) { // AnimeTosho.xyz subtitles are relative links
+                        subtitle.link = `https://animetosho.xyz${subtitle.link}`;
+                    }
                 }
             }
 
-            // Get the track attachments from first episode
-            const selectedEpSubtitles = extractSubtitlesFromHtml(selectedEpHtml);
-            if (countVidFiles > 1) {
-                subtitles = [...subtitles, ...selectedEpSubtitles.slice(1)];
-            } else {
-                subtitles = selectedEpSubtitles;
-            }
+            if (info_source == "TsukiHime") {
+                // Batch
+                if (countVidFiles > 1) {
+                    subtitles.push({ "text": "All Attachments (Batch)", "link": `https://storage.tsukihime.org/torattachpack/${tsukihime.id}/${encodeURIComponent(tsukihime.name)}_attachments.7z` });
+                } else {
+                    subtitles.push({ "text": "All Attachments", "link": `https://storage.tsukihime.org/attachpack/${tsukihime.id}_${currentFile.id}/${filenameNoPath.replace(/\.[^/.]+$/, "")}_attachments.7z` });
+                }
 
-            // console.log(subtitles)
-            if (info_source == "AnimeTosho.xyz") {
-                for (const subtitle of subtitles) { // AnimeTosho.xyz subtitles are relative links
-                    subtitle.link = `https://animetosho.xyz${subtitle.link}`;
+                for (const attachment of currentFile.attachments) {
+                    // console.log(attachment)
+                    if (attachment.type === 1) {
+                        if (attachment.info.name === null) {
+                            currentText = `${attachment.info.lang} [${attachment.info.codec}]`
+                        } else {
+                            currentText = `${attachment.info.name} [${attachment.info.lang}, ${attachment.info.codec}]`
+                        }
+                        subtitles.push({
+                            "text": currentText,
+                            "link": `https://storage.tsukihime.org/attach/${attachment.id.toString(16).padStart(8, '0').toUpperCase()}/${filenameNoPath.replace(/\.[^/.]+$/, "")}_track${attachment.info.tracknum}.${attachment.info.lang.toLowerCase()}.${attachment.info.codec.toLowerCase()}.xz`
+                        });
+                    }
                 }
             }
 
@@ -2556,11 +2858,22 @@ async function doFeatures() {
 
         // Screenshots
         if (toshoViewPageUrl && settings.screenshots !== "no") {
+
             let screenshots = [];
-            if (selectedEpHtml) {
-                screenshots = extractScreenshotsFromHtml(selectedEpHtml);
-            } else if (toshoHtml) {
-                screenshots = extractScreenshotsFromHtml(toshoHtml);
+            if (info_source == "AnimeTosho" || info_source == "AnimeTosho.xyz") {
+                if (selectedEpHtml) {
+                    screenshots = extractScreenshotsFromHtml(selectedEpHtml);
+                } else if (toshoHtml) {
+                    screenshots = extractScreenshotsFromHtml(toshoHtml);
+                }
+            } else if (info_source == "TsukiHime") {
+                for (vidframe of currentFile?.vidframes) {
+                    screenshots.push({
+                        "url": `https://storage.tsukihime.org/sframes/${currentFile.id.toString(16).padStart(8, '0').toUpperCase()}_${vidframe}.png`,
+                        "thumbnail": `https://storage.tsukihime.org/sframes/${currentFile.id.toString(16).padStart(8, '0').toUpperCase()}_${vidframe}.webp?w=320&h=180`,
+                        "title": `Screenshot at ${formatTimestamp(vidframe)}`
+                    });
+                }
             }
             // console.log(screenshots)
             addScreenshotsToPage(screenshots, fileInfo, subtitles, selectedEpFilename, info_source);
@@ -2568,17 +2881,27 @@ async function doFeatures() {
         }
         console.log(`Added screenshots to page: ${performance.now() - startTime}ms`);
 
-
+        // Deffered FileInfo requiring additional fetch
         if (selectedEpId && info_source == "AnimeTosho.xyz" && settings.fileinfoMode !== "no") {
             // Need to fetch again for the mediainfo, theoretically this could be done after screenshots and attachments are added
-            const doc = new DOMParser().parseFromString(selectedEpHtml, "text/html");
-            selectedEpFilename = doc.querySelector("a.filemeta_name")?.textContent;
-            const fileInfoLink = doc.querySelector("a.filemeta_name")?.getAttribute("href");
-            console.log(`Fetching fileinfo html: ${performance.now() - startTime}ms`);
-            selectedEpHtml = await fetchUrl(`https://animetosho.xyz${fileInfoLink}`);
-            console.log(`Fetched fileinfo html: ${performance.now() - startTime}ms`);
-            fileInfo = await extractFileinfoFromHtml(selectedEpHtml);
-            // console.log(fileInfo)
+            const fileMeta = extractAnimeToshoXyzFileMeta(selectedEpHtml);
+            selectedEpFilename = fileMeta.filename || selectedEpFilename;
+            const fileInfoLink = fileMeta.fileInfoLink;
+            if (!fileInfoLink) {
+                console.log("No AnimeTosho.xyz file info link found, skipping fileinfo fetch...");
+            } else {
+                console.log(`Fetching fileinfo html: ${performance.now() - startTime}ms`);
+                selectedEpHtml = await fetchUrl(`https://animetosho.xyz${fileInfoLink}`);
+                console.log(`Fetched fileinfo html: ${performance.now() - startTime}ms`);
+                fileInfo = await extractFileinfoFromHtml(selectedEpHtml);
+                // console.log(fileInfo)
+                if (fileInfo && settings.fileinfoMode !== "no") {
+                    addFileinfoFeatures(fileInfo, selectedEpFilename, parent, magnet);
+                }
+            }
+        } else if (selectedEpId && info_source === "TsukiHime" && settings.fileinfoMode !== "no") {
+            const torrentFile = torrentFiles?.find(file => String(file.id) === String(selectedEpId));
+            fileInfo = await fetchTsukihimeFileMediainfo(tsukihime?.id, selectedEpId, torrentFile);
             if (fileInfo && settings.fileinfoMode !== "no") {
                 addFileinfoFeatures(fileInfo, selectedEpFilename, parent, magnet);
             }
@@ -2587,9 +2910,9 @@ async function doFeatures() {
         reorderPanels();
     }
 
-    function makeFileListClickable(countVidFiles, selectedEpId, tosho) {
+    function makeFileListClickable(countVidFiles, selectedEpId, torrentFiles) {
         if (countVidFiles <= 1) return;
-        if (!tosho.files) return;
+        if (!torrentFiles) return;
 
         // Index DOM list items by extracted filename
         const fileListItems = Array.from(document.querySelectorAll('ul li'));
@@ -2607,7 +2930,7 @@ async function doFeatures() {
         });
 
         // Single pass over files to attach handlers
-        for (const file of tosho.files) {
+        for (const file of torrentFiles) {
             const filename = file.filename.split('/').pop();
             const fileExtension = filename.toLowerCase().split('.').pop();
             if (!['mkv', 'mp4', 'ts'].includes(fileExtension)) continue;
@@ -2622,7 +2945,7 @@ async function doFeatures() {
             item.setAttribute('data-filename', filename);
 
             // Mark default selected
-            if (file.id === selectedEpId) {
+            if (String(file.id) === String(selectedEpId)) {
                 const fileIcon = item.querySelector('i.fa-file');
                 if (fileIcon) fileIcon.className = 'fa fa-file-circle-check';
             }
@@ -2652,7 +2975,7 @@ async function doFeatures() {
     }
 
     doDynamicEpisodeFunctions(selectedEpId, selectedEpFilename, countVidFiles, toshoViewPageUrl);
-    makeFileListClickable(countVidFiles, selectedEpId, tosho);
+    makeFileListClickable(countVidFiles, selectedEpId, torrentFiles);
 
     // Delayed fetch so that the other ones are available faster
     if (settings.anilist || settings.myanimelist) {
@@ -2871,10 +3194,14 @@ async function doSettings() {
         const legacyPanelLayout = Array.isArray(userSettings.panelOrder)
             ? userSettings.panelOrder.map(key => ({ type: 'panel', key }))
             : null;
-
         // Preserve user-defined values
         for (const key in userSettings) {
             if (!(key in defaultSettings)) continue;
+            // For force updating legacy default filters
+            if (key === "languageFilters" && JSON.stringify(userSettings.languageFilters) == JSON.stringify(["eng", "enm", "und"])) {
+                mergedSettings.languageFilters = defaultSettings.languageFilters;
+                continue;
+            }
             mergedSettings[key] = userSettings[key];
         }
         if (!userSettings.panelLayout && legacyPanelLayout) {
@@ -3378,7 +3705,8 @@ async function doSettings() {
                     ${chk('anidb', settings.anidb, 'AniDB')}
                     ${chk('myanimelist', settings.myanimelist, 'MyAnimeList')}
                     ${chk('anilist', settings.anilist, 'AniList')}
-                    ${chk('animetosho', settings.animetosho, 'AnimeTosho')}
+                    ${chk('animetosho', settings.animetosho, 'Source site')}
+                    ${chk('nekobt', settings.nekobt, 'NekoBT')}
                     ${sec('NZB Download')}
                     ${chk('nzb', settings.nzb, 'Enable NZB')}
                     ${sub('setting-nzb-subopts', settings.nzb)}
