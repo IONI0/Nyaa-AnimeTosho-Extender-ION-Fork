@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.1.1
+// @version      1.1.2
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -1146,7 +1146,7 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
     document.body.appendChild(modalOverlay);
 }
 
-function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, info_source) {
+function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, info_source, currentFile = null) {
     if (!screenshots.length || settings.screenshots === "no") return;
     let refreshPanel = false;
     let wasCollapsed = false;
@@ -1336,6 +1336,17 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
                 }
             } else if (trackSelector.options.length > 1) {
                 initialTrackIndex = 1; // fallback to first track
+            }
+        } else if (currentFile) { // Tsukihime method with need for fileinfo fetch
+            const attachments = currentFile.attachments;
+            const nonForced = attachments?.find(a => a.type === 1 && !a.info.forced);
+            if (nonForced) {
+                for (let i = 0; i < trackSelector.options.length; i++) {
+                    if (trackSelector.options[i].text.includes(`Track ${nonForced.info.tracknum}`)) {
+                        initialTrackIndex = i;
+                        break;
+                    }
+                }
             }
         } else if (trackSelector.options.length > 1) {
             initialTrackIndex = 1;
@@ -2708,11 +2719,16 @@ async function doFeatures() {
     // NekoBT
     if (settings.nekobt) {
         let nekobt_id = null;
+        let injectedNekoBT = false;
 
         if (info_source === "TsukiHime") {
             nekobt_id = tsukihime.nekobt_id;
-            injectLink();
-        } else {
+            if (nekobt_id) {
+                injectedNekoBT = true;
+                injectLink();
+            }
+        }
+        if (!injectedNekoBT) {
             GM_xmlhttpRequest({
                 method: "GET",
                 url: `https://nekobt.to/api/v1/torrents/search?query=${hash}`,
@@ -2885,7 +2901,7 @@ async function doFeatures() {
                 }
             }
             // console.log(screenshots)
-            addScreenshotsToPage(screenshots, fileInfo, subtitles, selectedEpFilename, info_source);
+            addScreenshotsToPage(screenshots, fileInfo, subtitles, selectedEpFilename, info_source, currentFile);
             reorderPanels();
         }
         console.log(`Added screenshots to page: ${performance.now() - startTime}ms`);

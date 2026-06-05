@@ -45,3 +45,7 @@
 ### V1.1.1
 - [>] Fix "All Attachments" appearing for Tsukihime even when there are no attachments
 - [>] Changed to not add ?s= param when selecting SRT tracks as they are not rendered anyways
+
+### V1.1.2
+- [>] Defer to nekobt api search if nekobt id not found in Tsukihime api
+- [>] Fix for First Non-forced subtitle track selection on Tsukihime
