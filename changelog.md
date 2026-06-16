@@ -49,3 +49,6 @@
 ### V1.1.2
 - [>] Defer to nekobt api search if nekobt id not found in Tsukihime api
 - [>] Fix for First Non-forced subtitle track selection on Tsukihime
+
+### V1.1.3
+- [>] Fix for anilist and mal link on tsukihime releases without an anidb id

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.1.2
+// @version      1.1.3
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -1337,7 +1337,7 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
             } else if (trackSelector.options.length > 1) {
                 initialTrackIndex = 1; // fallback to first track
             }
-        } else if (currentFile) { // Tsukihime method with need for fileinfo fetch
+        } else if (currentFile) { // Tsukihime method without need for fileinfo fetch
             const attachments = currentFile.attachments;
             const nonForced = attachments?.find(a => a.type === 1 && !a.info.forced);
             if (nonForced) {
@@ -2476,8 +2476,12 @@ async function doFeatures() {
         case "TsukiHime":
             anidb_aid = tsukihime.anime.anidb;
             linkMap = {};
-            linkMap.mal = `https://myanimelist.net/anime/${tsukihime.anime.mal}`;
-            linkMap.anilist = `https://anilist.co/anime/${tsukihime.anime.anilist}`;
+            if (tsukihime.anime.mal) {
+                linkMap.mal = `https://myanimelist.net/anime/${tsukihime.anime.mal}`;
+            }
+            if (tsukihime.anime.anilist) {
+                linkMap.anilist = `https://anilist.co/anime/${tsukihime.anime.anilist}`;
+            }
     }
     // console.log(anidb_aid)
 
@@ -2539,8 +2543,8 @@ async function doFeatures() {
 
     // MyAnimeList
     const mal = magnet?.cloneNode(true);
-    mal.href = `https://myanimelist.net/anime/0`
-    if (anidb_aid && settings.myanimelist) {
+    mal.href = linkMap?.mal ?? `https://myanimelist.net/anime/0`;
+    if ((anidb_aid || (linkMap && "mal" in linkMap)) && settings.myanimelist) {
         let text = document.createTextNode(" or ")
         parent?.appendChild(text)
 
@@ -2548,7 +2552,7 @@ async function doFeatures() {
         mal.innerHTML = '<i class="fa-solid fa-database fa-fw"></i>MyAnimeList'
 
         async function openMal(e, linkMap, mal) {
-            if (!linkMap) {
+            if (!linkMap || linkMap && !("mal" in linkMap)) {
                 linkMap = await fetchAnidbLinkMap(anidb_aid, anidbConnectingAPI);
                 mal.href = linkMap.mal
             }
@@ -2585,8 +2589,9 @@ async function doFeatures() {
 
     // Anilist
     const anilist = magnet?.cloneNode(true);
-    anilist.href = `https://anilist.co/anime/0`
-    if (anidb_aid && settings.anilist) {
+    anilist.href = linkMap?.anilist ?? `https://anilist.co/anime/0`;
+    console.log(anilist.href)
+    if ((anidb_aid || (linkMap && "anilist" in linkMap)) && settings.anilist) {
         let text = document.createTextNode(" or ")
         parent?.appendChild(text)
 
@@ -2594,7 +2599,7 @@ async function doFeatures() {
         anilist.innerHTML = '<i class="fa-solid fa-database fa-fw"></i>AniList'
 
         async function openAnilist(e, linkMap, anilist) {
-            if (!linkMap) {
+            if (!linkMap || linkMap && !("anilist" in linkMap)) {
                 linkMap = await fetchAnidbLinkMap(anidb_aid, anidbConnectingAPI);
                 anilist.href = linkMap.anilist
             }
@@ -3004,7 +3009,7 @@ async function doFeatures() {
 
     // Delayed fetch so that the other ones are available faster
     if (settings.anilist || settings.myanimelist) {
-        if (!linkMap) linkMap = await fetchAnidbLinkMap(anidb_aid, anidbConnectingAPI);
+        if ((!linkMap || !linkMap?.anilist || !linkMap?.mal) && anidb_aid) linkMap = await fetchAnidbLinkMap(anidb_aid, anidbConnectingAPI);
         anilist.href = linkMap.anilist;
         mal.href = linkMap.mal;
     }
