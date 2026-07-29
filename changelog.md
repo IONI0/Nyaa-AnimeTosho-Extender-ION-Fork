@@ -52,3 +52,11 @@
 
 ### V1.1.3
 - [>] Fix for anilist and mal link on tsukihime releases without an anidb id
+
+### V1.2.0
+- [>] Fallback to Animetosho.xyz if tsukihime times out
+- [>] Animetosho.xyz new api support in anticipation for removal on August 1st
+- [#] Rendered subtitles on video on animetosho.xyz are not yet supported as they seem to not be completely rolled out yet
+- [>] Fix different character length estimates due to CRLF on tsukihime
+- [>] Fix for releases with no anime_id on tsukihime
+- [>] Added .avi to parsed video extensions
