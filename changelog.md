@@ -60,3 +60,6 @@
 - [>] Fix different character length estimates due to CRLF on tsukihime
 - [>] Fix for releases with no anime_id on tsukihime
 - [>] Added .avi to parsed video extensions
+
+### V1.2.1
+- [>] Fix tsukihime links showing when fetches fail and limit fetches to anime category

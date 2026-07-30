@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.2.0
+// @version      1.2.1
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -2301,10 +2301,10 @@ async function doFeatures() {
     const hash = document.querySelector("body > div.container div.panel-body div.col-md-5 > kbd")?.textContent;
     const title = document.querySelector(".panel .panel-title").textContent.trim();
     const timestamp = document.querySelector("[data-timestamp]").dataset.timestamp;
-    const isAnimeEnglishTranslated = !!document.querySelector('.panel-body a[href="/?c=1_2"]');
-    if (!isAnimeEnglishTranslated) {
-        // console.log("Not Anime English Translated, skipping...");
-        // return;
+    const isAnimeCategory = !!document.querySelector('.panel-body a[href="/?c=1_0"]');
+    if (!isAnimeCategory) {
+        console.log("Not Anime Category, skipping...");
+        return;
     }
     // console.log(title)
 
@@ -2348,7 +2348,8 @@ async function doFeatures() {
             info_source = "AnimeTosho.xyz";
             if (!tosho_xyz || !tosho_xyz.id) {
                 console.log("No AnimeTosho.xyz results found, skipping...");
-                info_source = "TsukiHime";
+                return;
+                // info_source = "TsukiHime";
             }
         }
 
