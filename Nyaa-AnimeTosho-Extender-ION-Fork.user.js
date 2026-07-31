@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.2.1
+// @version      1.2.2
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -21,6 +21,7 @@
 // (apologies for ai code, I don't know js or html)
 
 const defaultSettings = {
+    infoSource: "TsukiHime", // "TsukiHime", "AnimeTosho.xyz" Animetosho.org will still be prioritized where available
     settingsPosition: "navbar", // "navbar" or "user dropdown"
     anidb: false,
     myanimelist: false,
@@ -2324,38 +2325,64 @@ async function doFeatures() {
         info_source = "AnimeTosho";
         console.log(tosho)
     } else {
-        console.log(`Fetching tsukihime: ${performance.now() - startTime}ms`);
-        try {
-            tsukihime = await fetchUrl(`https://api.tsukihime.org/v1/torrents/btih/${hash}`);
-            console.log(tsukihime)
-            if (tsukihime?.state) {
-                info_source = "TsukiHime";
+        async function fetchTsukihime(hash) {
+            console.log(`Fetching tsukihime: ${performance.now() - startTime}ms`);
+            try {
+                const result = await fetchUrl(`https://api.tsukihime.org/v1/torrents/btih/${hash}`);
+                console.log(result)
+                return result?.state ? result : null;
+            } catch (error) {
+                console.error("Error fetching from TsukiHime API:", error);
+                return null;
             }
-        } catch (error) {
-            console.error("Error fetching from TsukiHime API:", error);
         }
 
-        if (!info_source) {
-            console.log(`Fetching tosho_xyz: ${performance.now() - startTime}ms`);
+        async function fetchAnimeToshoXYZ(hash) {
+            console.log(`Fetching AnimeTosho.xyz: ${performance.now() - startTime}ms`);
             try {
-                tosho_xyz = await fetchUrl(`https://feed.animetosho.xyz/json?show=torrent&btih=${hash}`);
-                console.log(tosho_xyz)
-                console.log(`Fetched tosho_xyz: ${performance.now() - startTime}ms`);
+                const result = await fetchUrl(`https://feed.animetosho.xyz/json?show=torrent&btih=${hash}`);
+                console.log(result);
+                console.log(`Fetched AnimeTosho.xyz: ${performance.now() - startTime}ms`);
+
+                if (!result?.id) {
+                    console.log("No AnimeTosho.xyz results found");
+                    return null;
+                }
+
+                return result;
             } catch (error) {
                 console.error("Error fetching from AnimeTosho.xyz:", error);
-            }
-
-            info_source = "AnimeTosho.xyz";
-            if (!tosho_xyz || !tosho_xyz.id) {
-                console.log("No AnimeTosho.xyz results found, skipping...");
-                return;
-                // info_source = "TsukiHime";
+                return null;
             }
         }
 
+        if (settings.infoSource === "TsukiHime") {
+            tsukihime = await fetchTsukihime(hash);
+            if (tsukihime) {
+                info_source = "TsukiHime";
+            } else {
+                console.log("Falling back to backup source...");
+                tosho_xyz = await fetchAnimeToshoXYZ(hash);
+                if (!tosho_xyz) {
+                    return;
+                }
+                info_source = "AnimeTosho.xyz";
+            }
 
+        } else if (settings.infoSource === "AnimeTosho.xyz") {
+            tosho_xyz = await fetchAnimeToshoXYZ(hash);
+            if (tosho_xyz) {
+                info_source = "AnimeTosho.xyz";
+            } else {
+                console.log("Falling back to backup source...");
+                tsukihime = await fetchTsukihime(hash);
+                if (!tsukihime) {
+                    return;
+                }
+                info_source = "TsukiHime";
+            }
+        }
     }
-
 
     let linkMap = null
 
@@ -2388,7 +2415,7 @@ async function doFeatures() {
     let torrentFiles = null;
     switch (info_source) {
         case "AnimeTosho":
-            torrentfiles = tosho?.files;
+            torrentFiles = tosho?.files;
             break;
         case "TsukiHime":
             torrentFiles = tsukihime?.files;
@@ -2850,9 +2877,10 @@ async function doFeatures() {
                         subtitles.push({ "text": `${attachment.info.language} [${attachment.info.language_code}, ${attachment.info.format}]`, "link": attachment.url });
                     }
                 }
-                if (subtitles[0]?.text != "All Attachments" && countVidFiles > 1) {
+                if (subtitles[0]?.text != "All Attachments") {
+                    const text = countVidFiles > 1 ? "All Attachments (Batch)" : "All Attachments";
                     subtitles.unshift({
-                        "text": "All Attachments (Batch)", "link": `https://animetosho.xyz/download/${tosho_xyz.id}/subs/all`
+                        "text": text, "link": `https://animetosho.xyz/download/${tosho_xyz.id}/subs/all`
                     });
                 }
             }
@@ -2978,7 +3006,6 @@ async function doFeatures() {
             });
         }
     }
-
     doDynamicEpisodeFunctions(selectedEpId, selectedEpFilename, countVidFiles, toshoViewPageUrl);
     makeFileListClickable(countVidFiles, selectedEpId, torrentFiles);
 
@@ -3219,7 +3246,7 @@ async function doSettings() {
     // Load settings or initialize with defaults
     const userSettings = await GM.getValue("settings", {});
     settings = mergeSettings(defaultSettings, userSettings);
-    const legacyPanelLayout = Array.isArray(userSettings.panelOrder)
+        const legacyPanelLayout = Array.isArray(userSettings.panelOrder)
         ? userSettings.panelOrder.map(key => ({ type: 'panel', key }))
         : null;
     settings.panelLayout = normalizePanelLayout(userSettings.panelLayout || legacyPanelLayout || settings.panelLayout || createDefaultPanelLayout());
@@ -3704,6 +3731,8 @@ async function doSettings() {
             <div class="s-body">
 
                 <div class="s-pane active" id="s-pane-general">
+                    ${sec('Info')}
+                    ${sel('infoSource', settings.infoSource, { label: 'Info source', options: [['TsukiHime', 'TsukiHime'], ['AnimeTosho.xyz', 'AnimeTosho.xyz']] })}
                     ${sec('Interface')}
                     ${sel('settingsPosition', settings.settingsPosition, { label: 'Settings position', options: [['navbar', 'Navbar'], ['user dropdown', 'User dropdown']] })}
                     ${sec('Links')}

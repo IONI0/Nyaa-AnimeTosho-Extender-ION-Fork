@@ -63,3 +63,9 @@
 
 ### V1.2.1
 - [>] Fix tsukihime links showing when fetches fail and limit fetches to anime category
+
+### V1.2.2
+- [>] Fix animetosho.org information not filling due to a typo
+- [+] Added Setting to prioritise infosource between TsukiHime and AnimeTosho.xyz
+- [#] They will still fallback to each other and pre may 2026 will still use AnimeTosho.org for now
+- [>] Fix for "All Attachments" link being missing on some animetosho.xyz releases
