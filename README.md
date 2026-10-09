@@ -1,6 +1,6 @@
 # Nyaa AnimeTosho Extender ION Fork
 
-User script that extends nyaa.si/view page with AnimeTosho information. All information comes from [AnimeTosho.org](https://animetosho.org/) (Pre 2026-05-09), [Tsukihime.org](https://tsukihime.org), and [AnimeTosho.xyz](https://animetosho.xyz/). They only scrapes a subset of all releases in the Anime category, may skip certain files, and takes time to process new episodes so not all pages will have complete information.
+User script that extends nyaa.si/view page with AnimeTosho information. All information comes from [Tsukihime.org](https://tsukihime.org), and [AnimeTosho-New](https://animetosho.net/). They only scrapes a subset of all releases in the Anime category, may skip certain files, and takes time to process new episodes so not all pages will have complete information.
 
 ### Functionality
 - Link to Source page
@@ -9,7 +9,7 @@ User script that extends nyaa.si/view page with AnimeTosho information. All info
 - Settings GUI to enable only the features you want
 - Link to Series AniDB/MyAnimeList/AniList
 - Link to NekoBT page
-- Screenshots with a dropdown to select which subtitle track is present in the screenshots (Animetosho.org only)
+- Screenshots with a dropdown to select which subtitle track is present in the screenshots
 - Full-sized screenshot viewer
 - Attachments download options for all tracks with language filters and option to extract the .xz for you
 - View extracted subtitle content in one click with ASS & SRT syntax highlighting
@@ -45,10 +45,10 @@ User script that extends nyaa.si/view page with AnimeTosho information. All info
 ### Notes
 - Access the settings GUI in the top nav bar by default. It is only visible on /view pages as the extension is only active there. Settings should save over updates
 - sabUrl and NZB key are optional settings if you have them
-- Screenshots previews are loaded as jpgs, click in to see full png (Animetosho.org)
-- SRT subtitles and maybe other formats are not included in the screenshot on AnimeTosho
-- For batch releases, click on other episodes in file list to change the data source for everything. Look for the tick next to the file icon (Animetosho.org)
-- For batch releases, Attachments will show All Attachments for everything and the individual tracks for the selected episode (Animetosho.org)
+- Screenshots previews are loaded as jpgs, click in to see full png
+- Some subtitle formats are not included in the screenshot
+- For batch releases, click on other episodes in file list to change the data source for everything. Look for the tick next to the file icon
+- For batch releases, Attachments will show All Attachments for everything and the individual tracks for the selected episode
 - ASS syntax highlighting is automatically enabled only for sub files with under 100,000 characters by default. Change the highlighterCharCap option in settings to change this number
 - You can also choose your own highlighter js styles. Try selecting from here https://highlightjs.org/examples
 - Subtitle content viewing and extracting only works for individual subtitle tracks not `All Attachments`

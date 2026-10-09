@@ -69,3 +69,12 @@
 - [+] Added Setting to prioritise infosource between TsukiHime and AnimeTosho.xyz
 - [#] They will still fallback to each other and pre may 2026 will still use AnimeTosho.org for now
 - [>] Fix for "All Attachments" link being missing on some animetosho.xyz releases
+
+### V1.3.0
+- [>] Removed animetosho.org support due to them closing storage and feed servers (thank you for your service)
+- [>] Formerly AnimeTosho.xyz is now referred to as AnimeTosho-New or AT-N and uses animetosho.net url
+- [+] Screenshot subtitle selection for AT-N added for pages that support it. SRT tracks are also burnt in on these
+- [>] Fix for AT-N subtitle filenames on the pop-up not being fetched correctly
+- [>] First selected episode source in a batch will now be the first in alphabetical order because torrentfiles are now sorted again
+- [#] Note: AT-N's system does uses the language instead of track name for subtitles, while this could be manually changed for the extension, I will see first if they will change it for the site
+- [#] Due to the storage servers for old tosho being shut down, anything before May 2026 currently does have screenshots or attachments and AT-N is missing screenshots

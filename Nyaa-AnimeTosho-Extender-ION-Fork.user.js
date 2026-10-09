@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.2.2
+// @version      1.3.0
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -21,7 +21,7 @@
 // (apologies for ai code, I don't know js or html)
 
 const defaultSettings = {
-    infoSource: "TsukiHime", // "TsukiHime", "AnimeTosho.xyz" Animetosho.org will still be prioritized where available
+    infoSource: "TsukiHime", // "TsukiHime", "AnimeTosho-New"
     settingsPosition: "navbar", // "navbar" or "user dropdown"
     anidb: false,
     myanimelist: false,
@@ -682,7 +682,7 @@ function extractFileinfoFromHtml(html) {
         const doc = parser.parseFromString(html, "text/html");
         let el = doc.getElementById('file_addinfo'); // AnimeTosho.org
         if (!el) {
-            el = doc.getElementById('additional_info_text'); // AnimeTosho.xyz
+            el = doc.getElementById('additional_info_text'); // AnimeTosho-New
         }
         let raw = el.innerHTML.replace(/<br\s*\/?>/gi, '\n');
         // Decode HTML entities (including &nbsp;)
@@ -694,36 +694,6 @@ function extractFileinfoFromHtml(html) {
         console.error("Error extracting fileinfo from HTML:", error);
         return '';
     }
-}
-
-function extractAnimeToshoXyzFileMeta(html) {
-    try {
-        const doc = new DOMParser().parseFromString(html, "text/html");
-
-        // Current layout: <th>File Name (Size)</th> then link in adjacent <td>
-        const fileNameRow = [...doc.querySelectorAll('tr')]
-            .find(row => (row.querySelector('th')?.textContent || '').trim().startsWith('File Name'));
-        const rowAnchor = fileNameRow?.querySelector('td a[href]');
-        if (rowAnchor) {
-            return {
-                filename: (rowAnchor.textContent || '').trim(),
-                fileInfoLink: rowAnchor.getAttribute('href') || '',
-            };
-        }
-
-        // Fallback for older page layout.
-        const legacyAnchor = doc.querySelector('a.filemeta_name');
-        if (legacyAnchor) {
-            return {
-                filename: (legacyAnchor.textContent || '').trim(),
-                fileInfoLink: legacyAnchor.getAttribute('href') || '',
-            };
-        }
-    } catch (error) {
-        console.error('Error extracting AnimeTosho.xyz file metadata:', error);
-    }
-
-    return { filename: '', fileInfoLink: '' };
 }
 
 async function fetchTsukihimeFileMediainfo(torrentId, fileId, torrentFile) {
@@ -1091,6 +1061,7 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
 }
 
 function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, info_source, currentFile = null) {
+
     if (!screenshots.length || settings.screenshots === "no") return;
     let refreshPanel = false;
     let wasCollapsed = false;
@@ -1107,6 +1078,12 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
         }
         existingPanel.remove();
         refreshPanel = true;
+    }
+
+    let advancedMode = true;
+    // Basically it isn't the kek.sh stuff AT-N did at the beginning
+    if (info_source === "AnimeTosho-New" && !screenshots[0].url.includes("storage.animetosho")) {
+        advancedMode = false;
     }
 
     // Create screenshots panel
@@ -1156,7 +1133,7 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
     // Set grid template columns based on screenshotRows setting
     let columnsPerRow;
     switch (settings.previewSize) {
-        case "compact": info_source == "AnimeTosho.xyz" ? columnsPerRow = "4" : columnsPerRow = "5"; break;
+        case "compact": columnsPerRow = "5"; break;
         case "medium": columnsPerRow = "3"; break;
         case "large": columnsPerRow = "2"; break;
         case "huge": columnsPerRow = "1"; break;
@@ -1211,10 +1188,10 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
             const img = document.createElement("img");
 
             let effectiveTrackNum = trackNum;
-            if (trackSelector.options[trackSelector.selectedIndex].text.includes("SRT")) {
+            if (trackSelector.options[trackSelector.selectedIndex].text.includes("SRT") && info_source !== "AnimeTosho-New") {
                 effectiveTrackNum = null;
             }
-            if (info_source != "AnimeTosho.xyz") {
+            if (advancedMode) {
                 img.src = getImageUrl(url.replace('.png', '.jpg'), effectiveTrackNum);
             } else {
                 img.src = getImageUrl(url, effectiveTrackNum);
@@ -1236,8 +1213,9 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
         });
     }
 
-    // Add track options from subtitles (not available for AnimeTosho.xyz source)
-    if (subtitles && info_source !== "AnimeTosho.xyz") {
+    // Add track options from subtitles (not available for AnimeTosho-New source)
+    if (subtitles && (advancedMode)) {
+        console.log("Adding track options from subtitles:", subtitles);
         subtitles.forEach(({ text, link }) => {
             const trackMatch = link.match(/_track(\d+)/);
             if (trackMatch && !text.includes("All Attachments")) {
@@ -1249,7 +1227,8 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
             }
         });
     }
-    if (info_source === "AnimeTosho.xyz") {
+    console.log("Advanced mode:", advancedMode, "Track options count:", trackSelector.options.length);
+    if (!advancedMode) {
         trackSelector.style.display = "none";
     }
 
@@ -1584,9 +1563,13 @@ async function getValidHighlighterStyle(styleName) {
     return 'atom-one-dark';
 }
 
-function getFileNameFromUrl(url) {
+function getSubtitleFileNameFromUrl(url) {
     try {
         const u = new URL(url);
+        const filename = u.searchParams.get('filename');
+        if (filename) {
+            return filename;
+        }
         let name = u.pathname.split('/').pop() || 'subtitle.xz';
         // If Content-Disposition is present in query, use it
         const cd = u.searchParams.get('response-content-disposition');
@@ -1869,7 +1852,7 @@ function addSubtitlesToTorrentList(subtitles, isFilteredInit, selectedEpFilename
                 const originalBase64 = btoa(binary);
                 console.log(`Encoded original subtitle in base64 in ${Date.now() - start_time}ms`);
                 // Get the filename from the URL
-                const fileName = getFileNameFromUrl(download_url).replace(/</g, '&lt;');
+                const fileName = getSubtitleFileNameFromUrl(download_url).replace(/</g, '&lt;');
                 // console.log(fileName)
                 // Open in new tab
                 const htmlContent = `
@@ -2312,19 +2295,8 @@ async function doFeatures() {
     let info_source = "";
 
     let tosho = null;
-    let tosho_xyz = null;
+    let tosho_new = null;
     let tsukihime = null;
-    if (timestamp < 1778284800) { // 2026-05-09 when Animetosho.org stopped updating
-        console.log(`Fetching tosho: ${performance.now() - startTime}ms`);
-        tosho = await fetchUrl(`https://feed.animetosho.org/json?show=torrent&btih=${hash}`);
-        console.log(`Fetched tosho: ${performance.now() - startTime}ms`);
-        // Sort files by filename if they exist
-        if (tosho.files) {
-            tosho.files.sort((a, b) => a.filename.localeCompare(b.filename));
-        }
-        info_source = "AnimeTosho";
-        console.log(tosho)
-    } else {
         async function fetchTsukihime(hash) {
             console.log(`Fetching tsukihime: ${performance.now() - startTime}ms`);
             try {
@@ -2337,21 +2309,21 @@ async function doFeatures() {
             }
         }
 
-        async function fetchAnimeToshoXYZ(hash) {
-            console.log(`Fetching AnimeTosho.xyz: ${performance.now() - startTime}ms`);
+        async function fetchAnimeToshoNew(hash) {
+            console.log(`Fetching AnimeTosho-New: ${performance.now() - startTime}ms`);
             try {
-                const result = await fetchUrl(`https://feed.animetosho.xyz/json?show=torrent&btih=${hash}`);
+                const result = await fetchUrl(`https://feed.animetosho.net/json?show=torrent&btih=${hash}`);
                 console.log(result);
-                console.log(`Fetched AnimeTosho.xyz: ${performance.now() - startTime}ms`);
+                console.log(`Fetched AnimeTosho-New: ${performance.now() - startTime}ms`);
 
                 if (!result?.id) {
-                    console.log("No AnimeTosho.xyz results found");
+                    console.log("No AnimeTosho-New results found");
                     return null;
                 }
 
                 return result;
             } catch (error) {
-                console.error("Error fetching from AnimeTosho.xyz:", error);
+                console.error("Error fetching from AnimeTosho-New:", error);
                 return null;
             }
         }
@@ -2362,17 +2334,17 @@ async function doFeatures() {
                 info_source = "TsukiHime";
             } else {
                 console.log("Falling back to backup source...");
-                tosho_xyz = await fetchAnimeToshoXYZ(hash);
-                if (!tosho_xyz) {
+                tosho_new = await fetchAnimeToshoNew(hash);
+                if (!tosho_new) {
                     return;
                 }
-                info_source = "AnimeTosho.xyz";
+                info_source = "AnimeTosho-New";
             }
 
-        } else if (settings.infoSource === "AnimeTosho.xyz") {
-            tosho_xyz = await fetchAnimeToshoXYZ(hash);
-            if (tosho_xyz) {
-                info_source = "AnimeTosho.xyz";
+        } else if (settings.infoSource === "AnimeTosho-New") {
+            tosho_new = await fetchAnimeToshoNew(hash);
+            if (tosho_new) {
+                info_source = "AnimeTosho-New";
             } else {
                 console.log("Falling back to backup source...");
                 tsukihime = await fetchTsukihime(hash);
@@ -2382,7 +2354,7 @@ async function doFeatures() {
                 info_source = "TsukiHime";
             }
         }
-    }
+
 
     let linkMap = null
 
@@ -2401,8 +2373,8 @@ async function doFeatures() {
                     toshoViewPageUrl += `.k${tosho.nekobt_id}`;
             }
             break;
-        case "AnimeTosho.xyz":
-            toshoViewPageUrl = `https://animetosho.xyz/view/${tosho_xyz.id}`;
+        case "AnimeTosho-New":
+            toshoViewPageUrl = `https://animetosho.net/view/${tosho_new.id}`;
             break;
         case "TsukiHime":
             toshoViewPageUrl = `https://tsukihime.org/view/${tsukihime.id}`;
@@ -2420,12 +2392,13 @@ async function doFeatures() {
         case "TsukiHime":
             torrentFiles = tsukihime?.files;
             break;
-        case "AnimeTosho.xyz":
-            torrentFiles = tosho_xyz?.files;
+        case "AnimeTosho-New":
+            torrentFiles = tosho_new?.files;
             break;
     }
 
     if (torrentFiles) {
+        torrentFiles.sort((a, b) => a.filename.localeCompare(b.filename));
         for (const file of torrentFiles) {
             const filename = file.filename.toLowerCase();
             if (!filename.endsWith(".mkv") && !filename.endsWith(".mp4") && !filename.endsWith(".ts") && !filename.endsWith(".avi")) continue;
@@ -2446,8 +2419,8 @@ async function doFeatures() {
         case "AnimeTosho":
             anidb_aid = tosho.anidb_aid;
             break;
-        case "AnimeTosho.xyz":
-            anidb_aid = tosho_xyz?.anidb_aid;
+        case "AnimeTosho-New":
+            anidb_aid = tosho_new?.anidb_aid;
             break;
         case "TsukiHime":
             anidb_aid = tsukihime.anime?.anidb;
@@ -2619,13 +2592,13 @@ async function doFeatures() {
         const animetosho = magnet?.cloneNode(true);
 
         animetosho.querySelector("i").remove()
-        if (info_source == "AnimeTosho.xyz" || info_source == "AnimeTosho") {
-            if (tosho?.status == "skipped" || tosho_xyz?.status == "skipped") {
-                animetosho.innerHTML = `<i class="fa-solid fa-at fa-fw"></i>${info_source} (Skipped)`;
-            } else if (tosho?.status == "processing" || tosho_xyz?.status == "processing") {
-                animetosho.innerHTML = `<i class="fa-solid fa-at fa-fw"></i>${info_source} (Processing)`;
+        if (info_source == "AnimeTosho-New" || info_source == "AnimeTosho") {
+            if (tosho?.status == "skipped" || tosho_new?.status == "skipped") {
+                animetosho.innerHTML = `<i class="fa-solid fa-at fa-fw"></i>AnimeTosho (Skipped)`;
+            } else if (tosho?.status == "processing" || tosho_new?.status == "processing") {
+                animetosho.innerHTML = `<i class="fa-solid fa-at fa-fw"></i>AnimeTosho (Processing)`;
             } else {
-                animetosho.innerHTML = `<i class="fa-solid fa-at fa-fw"></i>${info_source}`;
+                animetosho.innerHTML = `<i class="fa-solid fa-at fa-fw"></i>AnimeTosho`;
             }
         } else if (info_source == "TsukiHime") {
             if (tsukihime?.state == "skipped") {
@@ -2652,8 +2625,8 @@ async function doFeatures() {
         case "AnimeTosho":
             nzb_url = tosho.nzb_url;
             break;
-        case "AnimeTosho.xyz":
-            nzb_url = tosho_xyz?.nzb_url || null;
+        case "AnimeTosho-New":
+            nzb_url = tosho_new?.nzb_url || null;
             break;
         case "TsukiHime":
             if (tsukihime.has_nzb == 1) {
@@ -2757,8 +2730,8 @@ async function doFeatures() {
         // For now selected Ep id is just the tosho id for xyz. Change later if batch support is added
         let selectedEpFilename = null;
 
-        // Animetosho_xyz
-        let animeToshoXyzSelectedFile = null;
+        // Animetosho_new
+        let animeToshoNewSelectedFile = null;
 
         // Tsukihime
         let filenameNoPath = null;
@@ -2780,15 +2753,10 @@ async function doFeatures() {
                     }
                 }
                 break;
-            case "AnimeTosho.xyz":
-                // console.log(`Fetching selectedEpHtmlNoMediaInfo: ${performance.now() - startTime}ms`);
-                // selectedEpHtmlNoMediaInfo = await fetchUrl(`https://animetosho.xyz/view/${selectedEpId}`);
-                // console.log(`Fetched selectedEpHtmlNoMediaInfo: ${performance.now() - startTime}ms`);
-                // selectedEpHtml = selectedEpHtmlNoMediaInfo;
-                // const fileMeta = extractAnimeToshoXyzFileMeta(selectedEpHtml);
-                for (const file of tosho_xyz.files) {
+            case "AnimeTosho-New":
+                for (const file of tosho_new.files) {
                     if (file.id == selectedEpId) {
-                        animeToshoXyzSelectedFile = file;
+                        animeToshoNewSelectedFile = file;
                         break;
                     }
                 }
@@ -2802,8 +2770,8 @@ async function doFeatures() {
             fileInfo = await extractFileinfoFromHtml(selectedEpHtml);
             // console.log(fileInfo)
 
-        } else if (selectedEpId && info_source == "AnimeTosho.xyz") {
-            fileInfo = animeToshoXyzSelectedFile?.info?.mediainfo;
+        } else if (selectedEpId && info_source == "AnimeTosho-New") {
+            fileInfo = animeToshoNewSelectedFile?.info?.mediainfo;
         }
         if (fileInfo && settings.fileinfoMode !== "no") {
             addFileinfoFeatures(fileInfo, selectedEpFilename, parent, magnet);
@@ -2863,24 +2831,28 @@ async function doFeatures() {
                 }
             }
 
-            if (info_source == "AnimeTosho.xyz") {
+            if (info_source == "AnimeTosho-New") {
                 let file = null;
-                if (animeToshoXyzSelectedFile?.attachments) {
-                    file = animeToshoXyzSelectedFile;
-                } else if (tosho_xyz?.attachments) {
-                    file = tosho_xyz;
+                if (animeToshoNewSelectedFile?.attachments) {
+                    file = animeToshoNewSelectedFile;
+                } else if (tosho_new?.attachments) {
+                    file = tosho_new;
                 }
                 for (const attachment of file.attachments) {
                     if (attachment.info.name === "All Attachments") {
                         subtitles.push({ "text": "All Attachments", "link": attachment.url });
                     } else if (attachment.type === "subtitle") {
-                        subtitles.push({ "text": `${attachment.info.language} [${attachment.info.language_code}, ${attachment.info.format}]`, "link": attachment.url });
+                        if (attachment.info.language == null) {
+                            subtitles.push({ "text": `${attachment.info.language_code} [${attachment.info.format}]`, "link": attachment.url });
+                        } else {
+                            subtitles.push({ "text": `${attachment.info.language} [${attachment.info.language_code}, ${attachment.info.format}]`, "link": attachment.url });
+                        }
                     }
                 }
                 if (subtitles[0]?.text != "All Attachments") {
                     const text = countVidFiles > 1 ? "All Attachments (Batch)" : "All Attachments";
                     subtitles.unshift({
-                        "text": text, "link": `https://animetosho.xyz/download/${tosho_xyz.id}/subs/all`
+                        "text": text, "link": `https://animetosho.net/download/${tosho_new.id}/subs/all`
                     });
                 }
             }
@@ -2909,16 +2881,16 @@ async function doFeatures() {
                         "title": `Screenshot at ${formatTimestamp(vidframe)}`
                     });
                 }
-            } else if (info_source == "AnimeTosho.xyz") {
+            } else if (info_source == "AnimeTosho-New") {
                 let file = null;
-                if (animeToshoXyzSelectedFile?.screenshots) {
-                    file = animeToshoXyzSelectedFile;
-                } else if (tosho_xyz?.screenshots) {
-                    file = tosho_xyz;
+                if (animeToshoNewSelectedFile?.screenshots) {
+                    file = animeToshoNewSelectedFile;
+                } else if (tosho_new?.screenshots) {
+                    file = tosho_new;
                 }
                 for (const screenshot of file.screenshots) {
                     screenshots.push({
-                        "url": screenshot.url,
+                        "url": screenshot.url.replace(".jpg?h=72", ".png"), // Replace thumbnail with full-size image
                         "thumbnail": screenshot.url,
                         "title": screenshot.title
                     });
@@ -3226,12 +3198,15 @@ async function doSettings() {
         const legacyPanelLayout = Array.isArray(userSettings.panelOrder)
             ? userSettings.panelOrder.map(key => ({ type: 'panel', key }))
             : null;
-        // Preserve user-defined values
+        // Updating legacy user settings to new format
         for (const key in userSettings) {
             if (!(key in defaultSettings)) continue;
-            // For force updating legacy default filters
             if (key === "languageFilters" && JSON.stringify(userSettings.languageFilters) == JSON.stringify(["eng", "enm", "und"])) {
                 mergedSettings.languageFilters = defaultSettings.languageFilters;
+                continue;
+            }
+            if (key === "infoSource" && userSettings.infoSource === "AnimeTosho-New") {
+                mergedSettings.infoSource = "AnimeTosho-New";
                 continue;
             }
             mergedSettings[key] = userSettings[key];
@@ -3732,7 +3707,7 @@ async function doSettings() {
 
                 <div class="s-pane active" id="s-pane-general">
                     ${sec('Info')}
-                    ${sel('infoSource', settings.infoSource, { label: 'Info source', options: [['TsukiHime', 'TsukiHime'], ['AnimeTosho.xyz', 'AnimeTosho.xyz']] })}
+                    ${sel('infoSource', settings.infoSource, { label: 'Info source', options: [['TsukiHime', 'TsukiHime'], ['AnimeTosho-New', 'AnimeTosho-New']] })}
                     ${sec('Interface')}
                     ${sel('settingsPosition', settings.settingsPosition, { label: 'Settings position', options: [['navbar', 'Navbar'], ['user dropdown', 'User dropdown']] })}
                     ${sec('Links')}
