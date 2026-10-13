@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.3.0
+// @version      1.3.1
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -22,6 +22,7 @@
 
 const defaultSettings = {
     infoSource: "TsukiHime", // "TsukiHime", "AnimeTosho-New"
+    swapInfoSourceButton: false,
     settingsPosition: "navbar", // "navbar" or "user dropdown"
     anidb: false,
     myanimelist: false,
@@ -54,6 +55,7 @@ const defaultSettings = {
 }
 
 let settings = {}
+let activeInfoSource = null;
 const groupTabState = window.__nyatGroupTabs || (window.__nyatGroupTabs = {});
 const groupKnownPanels = window.__nyatGroupKnownPanels || (window.__nyatGroupKnownPanels = {});
 const panelKeys = ["description", "filelist", "fileinfo", "screenshots", "attachments", "comments"];
@@ -718,7 +720,7 @@ function parseSubtitleTracksFromFileinfo(fileinfoText) {
     let current = null;
     for (let line of lines) {
         // Start of a new subtitle track
-        const m = line.match(/^Text #(\d+)/);
+        const m = line.match(/^\s*Text #(\d+)/);
         if (m) {
             if (current) tracks.push(current);
             current = { id: null, forced: false, default: false, language: '', title: '' };
@@ -726,15 +728,15 @@ function parseSubtitleTracksFromFileinfo(fileinfoText) {
         }
         if (!current) continue;
         // Parse properties
-        const idMatch = line.match(/^ID[\s:]+(\d+)/i);
+        const idMatch = line.match(/^\s*ID[\s:]+(\d+)/i);
         if (idMatch) current.id = idMatch[1];
-        if (/^Forced\s*:\s*Yes/i.test(line)) current.forced = true;
-        if (/^Forced\s*:\s*No/i.test(line)) current.forced = false;
-        if (/^Default\s*:\s*Yes/i.test(line)) current.default = true;
-        if (/^Default\s*:\s*No/i.test(line)) current.default = false;
-        const lang = line.match(/^Language\s*:\s*(.*)$/i);
+        if (/^\s*Forced\s*:\s*Yes/i.test(line)) current.forced = true;
+        if (/^\s*Forced\s*:\s*No/i.test(line)) current.forced = false;
+        if (/^\s*Default\s*:\s*Yes/i.test(line)) current.default = true;
+        if (/^\s*Default\s*:\s*No/i.test(line)) current.default = false;
+        const lang = line.match(/^\s*Language\s*:\s*(.*)$/i);
         if (lang) current.language = lang[1].trim();
-        const title = line.match(/^Title\s*:\s*(.*)$/i);
+        const title = line.match(/^\s*Title\s*:\s*(.*)$/i);
         if (title) current.title = title[1].trim();
     }
     if (current) tracks.push(current);
@@ -1215,7 +1217,6 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
 
     // Add track options from subtitles (not available for AnimeTosho-New source)
     if (subtitles && (advancedMode)) {
-        console.log("Adding track options from subtitles:", subtitles);
         subtitles.forEach(({ text, link }) => {
             const trackMatch = link.match(/_track(\d+)/);
             if (trackMatch && !text.includes("All Attachments")) {
@@ -1227,7 +1228,6 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
             }
         });
     }
-    console.log("Advanced mode:", advancedMode, "Track options count:", trackSelector.options.length);
     if (!advancedMode) {
         trackSelector.style.display = "none";
     }
@@ -1250,9 +1250,10 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
             // console.log(tracks)
             const nonForced = tracks.find(t => !t.forced);
             if (nonForced) {
+                const firstNonForcedTrackID = nonForced.id;
                 // Find the option in trackSelector that matches this id
                 for (let i = 0; i < trackSelector.options.length; i++) {
-                    if (trackSelector.options[i].text.includes(`Track ${nonForced.id}`)) {
+                    if (trackSelector.options[i].text.includes(`Track ${firstNonForcedTrackID}`)) {
                         initialTrackIndex = i;
                         break;
                     }
@@ -2328,7 +2329,7 @@ async function doFeatures() {
             }
         }
 
-        if (settings.infoSource === "TsukiHime") {
+        if (activeInfoSource === "TsukiHime") {
             tsukihime = await fetchTsukihime(hash);
             if (tsukihime) {
                 info_source = "TsukiHime";
@@ -2341,7 +2342,7 @@ async function doFeatures() {
                 info_source = "AnimeTosho-New";
             }
 
-        } else if (settings.infoSource === "AnimeTosho-New") {
+        } else if (activeInfoSource === "AnimeTosho-New") {
             tosho_new = await fetchAnimeToshoNew(hash);
             if (tosho_new) {
                 info_source = "AnimeTosho-New";
@@ -2617,6 +2618,32 @@ async function doFeatures() {
             return false
         };
         parent?.appendChild(animetosho);
+
+        if (settings.swapInfoSourceButton && parent) {
+            const swapSeparator = document.createTextNode(" - ");
+            parent.appendChild(swapSeparator);
+
+            const swapInfoSource = magnet.cloneNode(true);
+            swapInfoSource.className = (swapInfoSource.className || '') + ' nyat-swap-info-source-item';
+            swapInfoSource.innerHTML = '<i class="fa-solid fa-arrows-rotate fa-fw"></i>';
+            swapInfoSource.href = '#';
+            swapInfoSource.title = 'Switch between info sources temporarily';
+            swapInfoSource.onclick = async function (e) {
+                e.preventDefault();
+                try {
+                    const nextInfoSource = activeInfoSource === "TsukiHime"
+                        ? "AnimeTosho-New"
+                        : "TsukiHime";
+                    sessionStorage.setItem("nyat-temporary-info-source", nextInfoSource);
+                    location.reload();
+                } catch (error) {
+                    console.error("Failed to swap info source:", error);
+                    alert("Unable to swap info source. Please try again.");
+                }
+                return false;
+            };
+            parent.appendChild(swapInfoSource);
+        }
     }
 
     // NZB
@@ -2677,6 +2704,12 @@ async function doFeatures() {
 
         if (info_source === "TsukiHime") {
             nekobt_id = tsukihime.nekobt_id;
+            if (nekobt_id) {
+                injectedNekoBT = true;
+                injectLink();
+            }
+        } else if (info_source === "AnimeTosho-New") {
+            nekobt_id = tosho_new.nekobt_id;
             if (nekobt_id) {
                 injectedNekoBT = true;
                 injectLink();
@@ -2842,8 +2875,10 @@ async function doFeatures() {
                     if (attachment.info.name === "All Attachments") {
                         subtitles.push({ "text": "All Attachments", "link": attachment.url });
                     } else if (attachment.type === "subtitle") {
-                        if (attachment.info.language == null) {
+                        if (attachment.info.language == null && attachment.info.name == null) {
                             subtitles.push({ "text": `${attachment.info.language_code} [${attachment.info.format}]`, "link": attachment.url });
+                        } else if (attachment.info.name != null) {
+                            subtitles.push({ "text": `${attachment.info.name} [${attachment.info.language_code}, ${attachment.info.format}]`, "link": attachment.url });
                         } else {
                             subtitles.push({ "text": `${attachment.info.language} [${attachment.info.language_code}, ${attachment.info.format}]`, "link": attachment.url });
                         }
@@ -3221,6 +3256,16 @@ async function doSettings() {
     // Load settings or initialize with defaults
     const userSettings = await GM.getValue("settings", {});
     settings = mergeSettings(defaultSettings, userSettings);
+    activeInfoSource = settings.infoSource;
+    try {
+        const temporaryInfoSource = sessionStorage.getItem("nyat-temporary-info-source");
+        if (temporaryInfoSource === "TsukiHime" || temporaryInfoSource === "AnimeTosho-New") {
+            activeInfoSource = temporaryInfoSource;
+            sessionStorage.removeItem("nyat-temporary-info-source");
+        }
+    } catch (error) {
+        console.error("Failed to apply temporary info source:", error);
+    }
         const legacyPanelLayout = Array.isArray(userSettings.panelOrder)
         ? userSettings.panelOrder.map(key => ({ type: 'panel', key }))
         : null;
@@ -3708,6 +3753,7 @@ async function doSettings() {
                 <div class="s-pane active" id="s-pane-general">
                     ${sec('Info')}
                     ${sel('infoSource', settings.infoSource, { label: 'Info source', options: [['TsukiHime', 'TsukiHime'], ['AnimeTosho-New', 'AnimeTosho-New']] })}
+                    ${chk('swapInfoSourceButton', settings.swapInfoSourceButton, 'Swap button')}
                     ${sec('Interface')}
                     ${sel('settingsPosition', settings.settingsPosition, { label: 'Settings position', options: [['navbar', 'Navbar'], ['user dropdown', 'User dropdown']] })}
                     ${sec('Links')}
