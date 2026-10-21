@@ -83,3 +83,7 @@
 - [+] Added swap button for info sources for quick temporary switching. Trying to swap and the other source doesn't exist, it will remain the same. Turn this on in settings if you want
 - [>] For nekobt, AT-N now utilises their api's nekobt_id for instant addition
 - [>] AT-N subtitle tracks now use track name when available
+
+### V1.3.2
+- [>] Fixed error on AT-N release with no attachments
+- [>] Fixed undefined track names on some tsukihime attachments

@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.3.1
+// @version      1.3.2
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -2847,7 +2847,7 @@ async function doFeatures() {
                 for (const attachment of currentFile.attachments) {
                     // console.log(attachment)
                     if (attachment.type === 1) {
-                        if (attachment.info.name === null) {
+                        if (attachment.info.name === null || attachment.info.name === undefined) {
                             currentText = `${attachment.info.lang} [${attachment.info.codec}]`
                         } else {
                             currentText = `${attachment.info.name} [${attachment.info.lang}, ${attachment.info.codec}]`
@@ -2858,10 +2858,6 @@ async function doFeatures() {
                         });
                     }
                 }
-
-                if (subtitles.length === 1) { // Doesn't actually have any attachments
-                    subtitles = [];
-                }
             }
 
             if (info_source == "AnimeTosho-New") {
@@ -2871,7 +2867,7 @@ async function doFeatures() {
                 } else if (tosho_new?.attachments) {
                     file = tosho_new;
                 }
-                for (const attachment of file.attachments) {
+                for (const attachment of file?.attachments ?? []) {
                     if (attachment.info.name === "All Attachments") {
                         subtitles.push({ "text": "All Attachments", "link": attachment.url });
                     } else if (attachment.type === "subtitle") {
@@ -2890,6 +2886,10 @@ async function doFeatures() {
                         "text": text, "link": `https://animetosho.net/download/${tosho_new.id}/subs/all`
                     });
                 }
+            }
+
+            if (subtitles.length === 1) { // Doesn't actually have any attachments
+                subtitles = [];
             }
 
             if (settings.attachments !== "no" && subtitles.length > 0) {
