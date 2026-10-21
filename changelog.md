@@ -87,3 +87,7 @@
 ### V1.3.2
 - [>] Fixed error on AT-N release with no attachments
 - [>] Fixed undefined track names on some tsukihime attachments
+
+### V1.3.3
+- [>] No longer get sent to the leftmost tab if manually changing tabs and a new tab is loaded to the tab group
+- [>] Slightly update size of tab group headers

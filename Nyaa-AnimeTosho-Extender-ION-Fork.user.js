@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.3.2
+// @version      1.3.3
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -299,7 +299,7 @@ function normalizePanelLayout(layout) {
             cursor: default;
             max-height: none;
             padding: 0;
-            height: 46.85px;
+            height: 44.85px;
         }
         .nyat-group-heading.nyat-panel-heading { padding: 0; }
         .nyat-group-title-row {
@@ -348,7 +348,7 @@ function normalizePanelLayout(layout) {
             border-radius: 0;
             font-size: 16px;
             font-weight: 500;
-            padding: 12px 16px;
+            padding: 11px 15px;
             cursor: pointer;
             background: transparent;
             color: #d7d7d7;
@@ -3129,11 +3129,9 @@ function reorderPanels() {
 
         const groupKey = groupItem.title || 'Group';
         let activeIndex = 0;
-        const savedKey = groupTabState[groupKey];
-        const savedIndex = groupPanelEntries.findIndex(entry => entry.key === savedKey);
-        if (savedIndex >= 0) {
-            activeIndex = savedIndex;
-        }
+        const savedIndex = groupTabState?.[groupKey]?.[0];
+        const savedKey = groupTabState?.[groupKey]?.[1];
+
         const knownPanels = groupKnownPanels[groupKey] || (groupKnownPanels[groupKey] = new Set());
         let hasNewPanel = false;
         groupPanelEntries.forEach(entry => {
@@ -3142,13 +3140,21 @@ function reorderPanels() {
                 knownPanels.add(entry.key);
             }
         });
-        if (hasNewPanel) {
+
+        if (savedIndex >= 0) {
+            activeIndex = savedIndex;
+        }
+
+        if (hasNewPanel && savedIndex < 1) { // If on leftmost panel, stay on leftmost panel
             activeIndex = 0;
+        } else if (hasNewPanel && savedKey) {
+            const newIndex = groupPanelEntries.findIndex(entry => entry.key === savedKey);
+            activeIndex = newIndex >= 0 ? newIndex : 0;
         }
 
         const activateTab = (index) => {
             activeIndex = index;
-            groupTabState[groupKey] = groupPanelEntries[index]?.key;
+            groupTabState[groupKey] = [activeIndex, groupPanelEntries[index]?.key];
             tabs.querySelectorAll('button').forEach((button, idx) => {
                 button.classList.toggle('active', idx === index);
             });
