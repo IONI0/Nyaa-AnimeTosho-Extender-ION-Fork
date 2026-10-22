@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.3.3
+// @version      1.3.4
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -924,8 +924,8 @@ function openScreenshotModal(screenshots, initialIndex, trackNum, episodeTitle, 
                 const nextUrl = getImageUrl(screenshots[nextIndex].url, trackNum);
 
                 // Preload silently
-                preloadImage(prevUrl).catch(() => { });
-                preloadImage(nextUrl).catch(() => { });
+                // preloadImage(prevUrl).catch(() => { });
+                // preloadImage(nextUrl).catch(() => { });
             }
         };
 
@@ -1161,6 +1161,18 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
 
     gridContainer.classList.add("screenshot-grid");
 
+    function loadImageWithRetry(img, url, retries = 5, delay = 25) {
+        img.onerror = () => {
+            console.log(`Image load failed for ${url}, retrying in ${delay}ms... (${retries} retries left)`);
+            if (retries <= 0) return;
+            const wait = delay + Math.random() * 10;
+            retries--;
+            delay *= 3;
+            setTimeout(() => { img.src = url; }, wait);
+        };
+        img.src = url;
+    }
+
     function updateScreenshots(trackNum) {
         // Clear existing screenshots
         gridContainer.innerHTML = '';
@@ -1194,9 +1206,9 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
                 effectiveTrackNum = null;
             }
             if (advancedMode) {
-                img.src = getImageUrl(url.replace('.png', '.jpg'), effectiveTrackNum);
+                loadImageWithRetry(img, getImageUrl(url.replace('.png', '.jpg?h=480'), effectiveTrackNum));
             } else {
-                img.src = getImageUrl(url, effectiveTrackNum);
+                loadImageWithRetry(img, getImageUrl(url, effectiveTrackNum));
             }
             img.onload = () => {
                 imgContainer.style.paddingBottom = `${img.naturalHeight / img.naturalWidth * 100}%`;
@@ -1215,7 +1227,7 @@ function addScreenshotsToPage(screenshots, fileInfo, subtitles, episodeTitle, in
         });
     }
 
-    // Add track options from subtitles (not available for AnimeTosho-New source)
+    // Add track options from subtitles
     if (subtitles && (advancedMode)) {
         subtitles.forEach(({ text, link }) => {
             const trackMatch = link.match(/_track(\d+)/);
@@ -2241,7 +2253,14 @@ async function doFeatures() {
     const magnet = document.querySelector("div > a.card-footer-item");
 
     const parent = magnet?.parentElement;
-    if (!settings.descriptionHeader || settings.description === 'no') {
+    let descriptionIsNotInTabGroup = false;
+    for (const item of settings.panelLayout) {
+        if (item.type === "panel" && item.key === "description") {
+            descriptionIsNotInTabGroup = true;
+            break;
+        }
+    }
+    if ((!settings.descriptionHeader || settings.description === 'no') && descriptionIsNotInTabGroup) {
         makeDescriptionPanelCollapsible(parent, settings.description === 'no');
     }
 
@@ -2909,7 +2928,7 @@ async function doFeatures() {
                     screenshots = extractScreenshotsFromHtml(toshoHtml);
                 }
             } else if (info_source == "TsukiHime" && toshoViewPageUrl) {
-                for (vidframe of currentFile?.vidframes) {
+                for (vidframe of currentFile?.vidframes ?? []) {
                     screenshots.push({
                         "url": `https://storage.tsukihime.org/sframes/${currentFile.id.toString(16).padStart(8, '0').toUpperCase()}_${vidframe}.png`,
                         "thumbnail": `https://storage.tsukihime.org/sframes/${currentFile.id.toString(16).padStart(8, '0').toUpperCase()}_${vidframe}.webp?w=320&h=180`,
@@ -2923,7 +2942,7 @@ async function doFeatures() {
                 } else if (tosho_new?.screenshots) {
                     file = tosho_new;
                 }
-                for (const screenshot of file.screenshots) {
+                for (const screenshot of file?.screenshots ?? []) {
                     screenshots.push({
                         "url": screenshot.url.replace(".jpg?h=72", ".png"), // Replace thumbnail with full-size image
                         "thumbnail": screenshot.url,
@@ -2974,6 +2993,7 @@ async function doFeatures() {
             const filename = file.filename.split('/').pop();
             const fileExtension = filename.toLowerCase().split('.').pop();
             if (!['mkv', 'mp4', 'ts', 'avi'].includes(fileExtension)) continue;
+            if (info_source === "AnimeTosho-New" && file?.info === undefined) continue;
 
             const item = filenameToItem.get(filename);
             if (!item) continue;

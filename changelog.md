@@ -91,3 +91,8 @@
 ### V1.3.3
 - [>] No longer get sent to the leftmost tab if manually changing tabs and a new tab is loaded to the tab group
 - [>] Slightly update size of tab group headers
+
+### V1.3.4
+- [>] Retry preview image loading if it fails (common on AT-N due to request overload)
+- [>] Preview images load in lower quality with ?h=480 to decrease bandwidth a bit, click in for full quality
+- [>] Fixed file list items being clickable even when they have no info in AT-N
