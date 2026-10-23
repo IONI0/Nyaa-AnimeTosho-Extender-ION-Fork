@@ -96,3 +96,6 @@
 - [>] Retry preview image loading if it fails (common on AT-N due to request overload)
 - [>] Preview images load in lower quality with ?h=480 to decrease bandwidth a bit, click in for full quality
 - [>] Fixed file list items being clickable even when they have no info in AT-N
+
+### V1.3.5
+- [>] Increase height of language filter option in settings slightly so scroll bar doesn't cover options

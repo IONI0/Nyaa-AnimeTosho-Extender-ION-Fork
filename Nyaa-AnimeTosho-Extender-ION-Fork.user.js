@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.3.4
+// @version      1.3.5
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -3829,7 +3829,7 @@ async function doSettings() {
                         </div>
                         ${chk('filtersByDefault', settings.filtersByDefault, 'Filter by default')}
                         <label><span>Language filters:</span>
-                            <textarea id="setting-languageFilters" rows="1" style="resize:none;overflow-x:auto;overflow-y:hidden;white-space:nowrap;min-height:30px;">${s(Array.isArray(settings.languageFilters) ? settings.languageFilters.join(',') : settings.languageFilters)}</textarea>
+                            <textarea id="setting-languageFilters" rows="1" style="resize:none;overflow-x:auto;overflow-y:hidden;white-space:nowrap;min-height:40px;">${s(Array.isArray(settings.languageFilters) ? settings.languageFilters.join(',') : settings.languageFilters)}</textarea>
                         </label>
                     </div>
                 </div>
