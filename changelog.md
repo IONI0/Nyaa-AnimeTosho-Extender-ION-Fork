@@ -99,3 +99,6 @@
 
 ### V1.3.5
 - [>] Increase height of language filter option in settings slightly so scroll bar doesn't cover options
+
+### V1.3.6
+- [>] Fixed imported animetosho.org attachment links on tsukihime

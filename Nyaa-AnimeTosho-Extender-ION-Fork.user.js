@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Nyaa AnimeTosho Extender ION Fork
-// @version      1.3.5
+// @version      1.3.6
 // @description  Extends Nyaa view page with AnimeTosho information
 // @author       ION
 // @original-author Jimbo
@@ -2858,9 +2858,9 @@ async function doFeatures() {
             if (info_source == "TsukiHime" && toshoViewPageUrl) {
                 // Batch
                 if (countVidFiles > 1) {
-                    subtitles.push({ "text": "All Attachments (Batch)", "link": `https://storage.tsukihime.org/torattachpack/${tsukihime.id}/${encodeURIComponent(tsukihime.name)}_attachments.7z` });
+                    subtitles.push({ "text": "All Attachments (Batch)", "link": `https://storage.tsukihime.org/${tsukihime.animetosho === true ? "tosho/" : ""}torattachpack/${tsukihime.id}/${encodeURIComponent(tsukihime.name)}_attachments.7z` });
                 } else {
-                    subtitles.push({ "text": "All Attachments", "link": `https://storage.tsukihime.org/attachpack/${tsukihime.id}_${currentFile.id}/${filenameNoPath.replace(/\.[^/.]+$/, "")}_attachments.7z` });
+                    subtitles.push({ "text": "All Attachments", "link": `https://storage.tsukihime.org/${tsukihime.animetosho === true ? "tosho/" : ""}attachpack/${tsukihime.id}_${currentFile.id}/${filenameNoPath.replace(/\.[^/.]+$/, "")}_attachments.7z` });
                 }
 
                 for (const attachment of currentFile.attachments) {
@@ -2873,7 +2873,7 @@ async function doFeatures() {
                         }
                         subtitles.push({
                             "text": currentText,
-                            "link": `https://storage.tsukihime.org/attach/${attachment.id.toString(16).padStart(8, '0').toUpperCase()}/${filenameNoPath.replace(/\.[^/.]+$/, "")}_track${attachment.info.tracknum}.${attachment.info.lang.toLowerCase()}.${attachment.info.codec.toLowerCase()}.xz`
+                            "link": `https://storage.tsukihime.org/${tsukihime.animetosho === true ? "tosho/" : ""}attach/${attachment.id.toString(16).padStart(8, '0').toUpperCase()}/${filenameNoPath.replace(/\.[^/.]+$/, "")}_track${attachment.info.tracknum}.${attachment.info.lang.toLowerCase()}.${attachment.info.codec.toLowerCase()}.xz`
                         });
                     }
                 }
